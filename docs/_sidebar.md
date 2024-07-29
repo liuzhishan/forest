@@ -13,3 +13,4 @@
   - [hub](framework/hub/README.md)
 - [分布式训练平台](platform/README.md)
   - [整体架构](platform/structure.md)
+  - [样本格式](platform/grid_buffer.md)

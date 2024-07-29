@@ -1,0 +1,12 @@
+[package]
+name = "hub"
+authors = ["liuzhishan <liuzhishan01@gmail.com>"]
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+description = "hub for super fast disttributed training framework base on tensorflow."
+keywords = ["deep learning", "rust", "distributed training"]
+
+[dependencies]
+log = "0.4"
