@@ -1,8 +1,4 @@
-[package]
-name = "sniper"
-version = "0.0.1"
-
-[dependencies]
-
 [workspace]
-members = ["trainer", "ps", "hub", "common"]
+members = [
+  "core",
+]

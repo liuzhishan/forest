@@ -1,0 +1,20 @@
+[package]
+name = "core"
+authors = ["liuzhishan <liuzhishan01@gmail.com>"]
+version = "0.0.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+description = "Super fast distributed training framework based on Tensorflow."
+keywords = ["deep learning", "rust", "distributed training"]
+
+[dependencies]
+tracing = { version = "0.1.37", default-features = false }
+
+tokio = { version = "1.32.0", default-features = false, features = [
+    "signal",
+    "rt",
+    "macros",
+    "time",
+] }
+tokio-util = { version = "0.7.10", default-features = false }
