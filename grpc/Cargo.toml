@@ -1,0 +1,8 @@
+[package]
+name = "grpc"
+version = "0.0.1"
+edition = "2021"
+authors = ["liuzhishan <liuzhishan01@gmail.com>"]
+
+[dependencies]
+log = "0.4"

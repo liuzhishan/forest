@@ -10,3 +10,10 @@ keywords = ["deep learning", "rust", "distributed training"]
 
 [dependencies]
 log = "0.4"
+tonic = "0.7"
+prost = "0.10.1"
+tokio = { version = "1.39", features = ["macros", "rt-multi-thread"] }
+env_logger = "0.7"
+
+[build-dependencies]
+tonic-build = "0.7"
