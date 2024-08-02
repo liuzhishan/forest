@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package sniper;
+
+option cc_enable_arenas = true;
+
+/// Sparse feature.
+message SparseFeature {
+    /// Index of sparse feature in feature file.
+    uint32 index = 1;
+
+    /// Value of sparse feature, use uint64 as type.
+    repeated uint64 values = 2;
+}
+
+/// Dense feature, the type is float.
+message DenseFeature {
+    /// Index of dense feature in feature file.
+    uint32 index = 1;
+
+    /// Value of dense feature.
+    repeated float values = 2;
+}
+
+/// All features.
+message Features {
+    /// Version.
+    uint32 version = 1;
+
+    /// Request id.
+    uint64 llsid = 2;
+
+    /// user_id。
+    uint64 user_id = 3;
+
+    /// item_id。
+    uint64 item_id = 4;
+
+    /// Sparse feature.
+    repeated SparseFeature sparse_feature = 5;
+
+    /// Dense feature.
+    repeated DenseFeature dense_feature = 6;
+
+    /// Label, only one int64 is supported currently.
+    /// Consider of extensibility, repeated int64 is used as the type.
+    repeated int64 final_label = 7;
+}

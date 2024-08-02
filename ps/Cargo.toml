@@ -8,5 +8,21 @@ readme = "README.md"
 description = "ps for super fast disttributed training framework base on tensorflow."
 keywords = ["deep learning", "rust", "distributed training"]
 
+[[bin]]
+name = "ps-server"
+path = "src/bin/server.rs"
+
+[[bin]]
+name = "ps-client"
+path = "src/bin/client.rs"
+
 [dependencies]
 log = "0.4"
+tonic = "0.12"
+prost = "0.13.1"
+prost-types = "0.13.1"
+tokio = { version = "1.39", features = ["macros", "rt-multi-thread"] }
+env_logger = "0.7"
+anyhow = "1.0"
+api = { path = "../api" }
+util = { path = "../util" }
