@@ -3,9 +3,9 @@ use tonic::{transport::Server, Request, Response, Status};
 
 use env_logger;
 
-use api::sniper::{DataType, HelloRequest, HelloResponse, TensorMessage, VoidMessage};
-use api::sniper::{TensorProto, TensorShapeProto};
-use api::sniper::sniper_server::{Sniper, SniperServer};
+use grpc::sniper::sniper_server::{Sniper, SniperServer};
+use grpc::sniper::{DataType, HelloRequest, HelloResponse, TensorMessage, VoidMessage};
+use grpc::sniper::{TensorProto, TensorShapeProto};
 
 /// rpc server.
 #[derive(Debug, Default)]

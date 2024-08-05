@@ -2,9 +2,7 @@ tonic::include_proto!("sniper");
 
 impl TensorShapeProto {
     pub fn new() -> Self {
-        Self {
-            dim: Vec::new(),
-        }
+        Self { dim: Vec::new() }
     }
 }
 

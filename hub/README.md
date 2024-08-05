@@ -11,6 +11,5 @@ the same time.
 The components are as follows:
 - `hub_server`: main logic, start all worker threads.
 - `request_handler`: handle `rpc` request, process, and return result.
-- `node`: worker node, handle of data processing logic.
+- `task`: task node, handle of data processing logic.
 - `pipeline`: data processing pipeline, every data format should have a unique pipeline.
-- `stream`: interface for reading input data, such as `hdfs` and `kakfa`.

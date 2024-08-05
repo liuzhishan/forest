@@ -1,4 +1,4 @@
-# ps (Pamameter Server)
+# PS (Pamameter Server)
 
 在广告模型中，sparse 特征的数量非常多，通常可以达到几十亿甚至上百亿的规模，这些 sparse 特征对应的 embedding
 参数量就非常大，难以保存到单张 GPU 卡甚至单台机器中。我们用 sign (格式为 int64_t) 表示每个具体的 sparse 特征。

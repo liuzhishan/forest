@@ -1,5 +1,5 @@
-use log::info;
 use env_logger;
+use log::info;
 
 pub fn init_log() {
     env_logger::builder()

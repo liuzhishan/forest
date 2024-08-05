@@ -1,8 +1,19 @@
 [package]
 name = "grpc"
 version = "0.0.1"
-edition = "2021"
 authors = ["liuzhishan <liuzhishan01@gmail.com>"]
+edition = "2021"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+description = "grpc"
 
 [dependencies]
 log = "0.4"
+tonic = "0.12"
+prost = "0.13.1"
+prost-types = "0.13.1"
+hashbrown = "0.14"
+tokio = { version = "1.39", features = ["full"] }
+
+[build-dependencies]
+tonic-build = "0.12"

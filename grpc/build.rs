@@ -1,7 +1,9 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let iface_files = &["protos/meta.proto",
-                        "protos/feature.proto",
-                        "protos/service.proto"];
+    let iface_files = &[
+        "protos/meta.proto",
+        "protos/feature.proto",
+        "protos/service.proto",
+    ];
     let dirs = &["."];
 
     println!("start build proto");
@@ -12,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|e| panic!("protobuf compilation failed: {}", e));
 
     for file in iface_files {
-       println!("cargo:rerun-if-changed={}", file);
+        println!("cargo:rerun-if-changed={}", file);
     }
 
     Ok(())

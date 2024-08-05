@@ -21,8 +21,8 @@ log = "0.4"
 tonic = "0.12"
 prost = "0.13.1"
 prost-types = "0.13.1"
-tokio = { version = "1.39", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.39", features = ["full"] }
 env_logger = "0.7"
 anyhow = "1.0"
-api = { path = "../api" }
+grpc = { path = "../grpc" }
 util = { path = "../util" }

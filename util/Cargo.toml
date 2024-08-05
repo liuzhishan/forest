@@ -11,4 +11,4 @@ description = "util for sniper."
 log = "0.4"
 env_logger = "0.7"
 anyhow = "1.0"
-api = { path = "../api" }
+grpc = { path = "../grpc" }

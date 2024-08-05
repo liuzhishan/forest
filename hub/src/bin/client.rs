@@ -1,14 +1,12 @@
-use log::info;
 use anyhow::Result;
+use log::info;
 
-use api::sniper::HelloRequest;
-use api::sniper::sniper_client::SniperClient;
-use api::sniper::TensorMessage;
+use grpc::sniper::sniper_client::SniperClient;
+use grpc::sniper::HelloRequest;
+use grpc::sniper::TensorMessage;
 
 /// Test say_hello.
-async fn test_hello(
-    client: &mut SniperClient<tonic::transport::Channel>,
-) -> Result<()> {
+async fn test_hello(client: &mut SniperClient<tonic::transport::Channel>) -> Result<()> {
     let request = tonic::Request::new(HelloRequest {
         name: "Tonic".into(),
     });
@@ -22,9 +20,7 @@ async fn test_hello(
 }
 
 /// Test pull.
-async fn test_pull(
-    client: &mut SniperClient<tonic::transport::Channel>,
-) -> Result<()> {
+async fn test_pull(client: &mut SniperClient<tonic::transport::Channel>) -> Result<()> {
     let request = tonic::Request::new(TensorMessage::new());
 
     info!("Sending request to gRPC Server...");
