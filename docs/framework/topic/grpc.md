@@ -93,18 +93,7 @@
 与 `grpc buffer` 的互相转换过程中，我们可以采取零拷贝的方式进行处理，可以避免拷贝数据的开销，
 从而提升性能。
 
-我们可以通过如下模块来实现所需的接口。
-
-- `GRPCClient`: 基本的 `grpc client`, 负责通用的 `grpc` 请求。 
-- `GRPCServer`: 基本的 `grpc server`, 负责通用的 `grpc` 处理。 
-- `GRPCHandler`: 封装 `grpc` 请求相关的参数。
-- `GRPCTensorCoding`: `tensor` 返回类型相关的序列化与发序列化处理。
-- `GRPCBufferStream`: `grpc byte buffer` 读取相关逻辑。 
-- `SniperGrpcClient`: 处理 `sniper` 中各种请求的 `grpc_client`。
-- `SniperGrpcServer`: 处理 `sniper` 中各种请求的 `grpc_server`。
-
-
-而在 `rust` 中，`tonic` 已经提供了封装非常好的 `grpc client`, 可以直接使用。`
+而在 `rust` 中，`tonic` 已经提供了封装非常好的 `grpc client`, 可以直接使用。
 
 
 ## 参考
