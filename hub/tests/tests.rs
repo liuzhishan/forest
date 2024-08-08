@@ -1,3 +1,4 @@
+use clap::Parser;
 use log::{error, info};
 
 use rand::RngCore;
@@ -8,7 +9,7 @@ use tokio::time::{sleep, Duration};
 use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle, Toplevel};
 
 use hub::local_reader::{self, LocalReader};
-use util::init_log;
+use util::{error_bail, init_log, Flags};
 
 static INIT: Once = Once::new();
 
@@ -38,11 +39,15 @@ fn test_rand() {
 async fn test_local_reader() -> Result<()> {
     setup();
 
+    let flags = Flags::parse();
+
+    if flags.filename.is_none() {
+        error_bail!("missing filename in args!");
+    }
+
     let (s, r) = async_channel::bounded(10);
 
-    let filenames = &vec![String::from(
-        "/home/liuzhishan/ast/data/dsp_conv_simple_features_head_100.txt",
-    )];
+    let filenames = &vec![flags.filename.unwrap()];
 
     let local_reader = LocalReader::new(filenames, s);
 

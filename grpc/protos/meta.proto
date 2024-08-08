@@ -247,7 +247,8 @@ message FeatureList {
   repeated string sparse_class_names = 5;
   repeated string dense_class_names = 6;
   repeated SparseFieldInfo field_list = 7;
-  repeated string sparse_emb_table = 8; // 与 sparse_class_name 对应
+   // correspond to sparse_class_name.
+  repeated string sparse_emb_table = 8;
 }
 
 // sample source
@@ -297,8 +298,6 @@ message StartSampleOption {
   HdfsSrc hdfs_src = 11;
 
   KafkaSrc kafka_src = 12;
-
-
 
   // aiplatform common sample src
   message AiplatformCommonSrc { string kess_service = 1; }
@@ -362,11 +361,11 @@ message StartSampleOption {
 }
 
 message BsSampleOption {
-  //consumer
+  // consumer
   string consumer_topic = 1;
   string group_id = 2;
   string consumer_user_param = 3;
-  //producer
+  // producer
   string train_topic = 4;
   string merge_topic = 5;
 

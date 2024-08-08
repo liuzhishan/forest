@@ -72,7 +72,6 @@ impl BatchAssembler {
     }
 
     pub fn init(&mut self) -> bool {
-        // TODO
         true
     }
 
@@ -108,6 +107,14 @@ impl BatchAssembler {
             tokio::select! {
                 line_res = self.line_receiver.recv() => {
                     if line_res.is_err() {
+                        // Need to sleep, if the channel is closed, all other channel will be finish
+                        // and closed too. Then all task is done, shutdonw signal is send, and the
+                        // all pipeline is finished before FeedSample is over.
+                        //
+                        // So the task will run forever, can only be closed by shutdown signal from
+                        // outside the pipeline.
+                        //
+                        // Need to find another more elegant way later.
                         sleep(Duration::from_secs(2)).await;
                     } else {
                         let line = line_res.unwrap();
