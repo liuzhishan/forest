@@ -7,6 +7,10 @@ use anyhow::anyhow;
 use anyhow::bail;
 
 use tokio::signal::unix::{signal, SignalKind};
+use tonic::{transport::Server, Code, Request, Response, Status};
+use tonic_types::{ErrorDetails, StatusExt};
+
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use std::io::Write;
 
@@ -59,4 +63,20 @@ macro_rules! error_bail {
         error!($fmt, $($arg)*);
         bail!($fmt, $($arg)*)
     };
+}
+
+pub fn send_error_response<T>(err_details: ErrorDetails) -> Result<Response<T>, Status> {
+    let status = Status::with_error_details(
+        Code::InvalidArgument,
+        "request cotains invalid argumetns",
+        err_details,
+    );
+
+    return Err(status);
+}
+
+pub fn compute_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
 }

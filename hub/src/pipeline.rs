@@ -71,8 +71,7 @@ impl SingleSamplePipeline {
     pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
         info!("SingleSamplePipeline start");
 
-        let (line_sender, line_receiver) =
-            async_channel::bounded::<String>(self.line_queue_size);
+        let (line_sender, line_receiver) = async_channel::bounded::<String>(self.line_queue_size);
 
         let (batch_sender, batch_receiver) =
             async_channel::bounded::<SampleBatch>(self.sample_batch_queue_size);
@@ -119,7 +118,7 @@ impl SingleSamplePipeline {
         info!("SingleSamplePipeline after batch assembler init");
 
         // Create FeedSample.
-        let placement = FeaturePlacement::new();
+        let placement = FeaturePlacement::new(&self.option.emb_tables, &self.option.ps_eps);
 
         let mut feed_sample = FeedSample::new(self.option.clone(), batch_receiver, placement);
 

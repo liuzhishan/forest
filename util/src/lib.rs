@@ -1,6 +1,5 @@
 mod util;
-pub use util::init_log;
-pub use util::wait_for_signal;
+pub use util::*;
 
 mod feature_placement;
 pub use feature_placement::FeaturePlacement;

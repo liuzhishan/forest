@@ -31,6 +31,7 @@ env_logger = "0.7"
 anyhow = "1.0"
 grpc = { path = "../grpc" }
 util = { path = "../util" }
+ps = { path = "../ps" }
 tokio-graceful-shutdown = "0.15.1"
 async-channel = "2.3.1"
 base64 = "0.22.1"
@@ -38,3 +39,4 @@ clap = "4.5.13"
 rand = "0.8.5"
 num_cpus = "1.16"
 tracing = "0.1.37"
+hashbrown = "0.11.2"

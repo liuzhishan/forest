@@ -39,3 +39,9 @@ message SimpleFeatures {
     /// Label, only one int64 is supported currently.
     int64 label = 5;
 }
+
+/// Passing sparse feature from hub to ps.
+message GpuPsFeature64 {
+  repeated uint64 features = 1;
+  repeated int32 item_indices = 2;
+}

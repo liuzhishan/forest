@@ -14,6 +14,7 @@ use grpc::sniper::{
 };
 
 use grpc::sniper::{TensorProto, TensorShapeProto};
+use util::send_error_response;
 
 use super::pipeline::GroupSamplePipeline;
 use super::pipeline::SingleSamplePipeline;
@@ -40,19 +41,6 @@ impl Hub {
             sample_batch_sender: s,
             sample_batch_receiver: r,
         }
-    }
-
-    fn send_error_response<T: ::prost::Message>(
-        &self,
-        err_details: ErrorDetails,
-    ) -> Result<Response<T>, Status> {
-        let status = Status::with_error_details(
-            Code::InvalidArgument,
-            "request cotains invalid argumetns",
-            err_details,
-        );
-
-        return Err(status);
     }
 }
 
@@ -91,7 +79,7 @@ impl SniperHub for Hub {
         }
 
         if err_details.has_bad_request_violations() {
-            return self.send_error_response::<VoidMessage>(err_details);
+            return send_error_response::<VoidMessage>(err_details);
         }
 
         let start_sample_option_res = request_inner.options.unwrap().to_msg::<StartSampleOption>();
@@ -103,7 +91,7 @@ impl SniperHub for Hub {
         }
 
         if err_details.has_bad_request_violations() {
-            return self.send_error_response::<VoidMessage>(err_details);
+            return send_error_response::<VoidMessage>(err_details);
         }
 
         let mut start_sample_option = start_sample_option_res.unwrap();
