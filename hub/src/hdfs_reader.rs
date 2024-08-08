@@ -1,5 +1,3 @@
-use super::task::Task;
-
 /// Read data from hdfs.
 pub struct HdfsReader {}
 
@@ -8,5 +6,3 @@ impl HdfsReader {
         Self {}
     }
 }
-
-impl Task for HdfsReader {}

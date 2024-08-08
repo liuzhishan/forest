@@ -1,8 +1,9 @@
-use env_logger;
-use log::info;
+mod util;
+pub use util::init_log;
+pub use util::wait_for_signal;
 
-pub fn init_log() {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Info)
-        .init();
-}
+mod feature_placement;
+pub use feature_placement::FeaturePlacement;
+
+mod flags;
+pub use flags::Flags;

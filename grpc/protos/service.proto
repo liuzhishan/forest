@@ -18,25 +18,27 @@ message HelloResponse {
 // Sniper Interface
 //
 ////////////////////////////////////////////////////////////////////////////////
-service Sniper {
+service SniperHub {
   rpc SayHello (HelloRequest) returns (HelloResponse);
-  //  ps
-  rpc Create(TensorMessage) returns (VoidMessage);
-  // rpc Freeze(TensorMessage) returns (VoidMessage);
-  // rpc FeedSample(TensorMessage) returns (VoidMessage);
-  // rpc Push(TensorMessage) returns (VoidMessage);
-  rpc Pull(TensorMessage) returns (TensorMessage);
-  // rpc EmbeddingLookup(TensorMessage) returns (TensorMessage);
-  // rpc PushGrad(TensorMessage) returns (VoidMessage);
-  // rpc Save(TensorMessage) returns (VoidMessage);
-  // rpc Restore(TensorMessage) returns (VoidMessage);
-  // rpc Complete(TensorMessage) returns (VoidMessage);
 
-  // //  hub
-  // rpc StartSample(TensorMessage) returns (VoidMessage);
-  // rpc ReadSample(TensorMessage) returns (TensorMessage);
+  rpc StartSample(TensorMessage) returns (VoidMessage);
+  rpc ReadSample(TensorMessage) returns (TensorMessage);
   // rpc UpdateHubShard(TensorMessage) returns (VoidMessage);
 
-  // //  scheduler
-  // rpc Heartbeat(TensorMessage) returns (VoidMessage);
+  rpc Heartbeat(TensorMessage) returns (VoidMessage);
+}
+
+service SniperPs {
+  rpc Create(TensorMessage) returns (VoidMessage);
+  rpc Freeze(TensorMessage) returns (VoidMessage);
+  rpc FeedSample(TensorMessage) returns (VoidMessage);
+  rpc Push(TensorMessage) returns (VoidMessage);
+  rpc Pull(TensorMessage) returns (TensorMessage);
+  rpc EmbeddingLookup(TensorMessage) returns (TensorMessage);
+  rpc PushGrad(TensorMessage) returns (VoidMessage);
+  rpc Save(TensorMessage) returns (VoidMessage);
+  rpc Restore(TensorMessage) returns (VoidMessage);
+  rpc Complete(TensorMessage) returns (VoidMessage);
+
+  rpc Heartbeat(TensorMessage) returns (VoidMessage);
 }

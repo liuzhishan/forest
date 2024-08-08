@@ -23,26 +23,19 @@ message DenseFeature {
 }
 
 /// All features.
-message Features {
-    /// Version.
-    uint32 version = 1;
-
+message SimpleFeatures {
     /// Request id.
-    uint64 llsid = 2;
-
-    /// user_id。
-    uint64 user_id = 3;
+    uint64 llsid = 1;
 
     /// item_id。
-    uint64 item_id = 4;
+    uint64 item_id = 2;
 
     /// Sparse feature.
-    repeated SparseFeature sparse_feature = 5;
+    repeated SparseFeature sparse_feature = 3;
 
     /// Dense feature.
-    repeated DenseFeature dense_feature = 6;
+    repeated DenseFeature dense_feature = 4;
 
     /// Label, only one int64 is supported currently.
-    /// Consider of extensibility, repeated int64 is used as the type.
-    repeated int64 final_label = 7;
+    int64 label = 5;
 }

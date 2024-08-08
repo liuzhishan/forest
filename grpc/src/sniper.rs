@@ -1,3 +1,5 @@
+use prost::Name;
+
 tonic::include_proto!("sniper");
 
 impl TensorShapeProto {
@@ -30,4 +32,15 @@ impl TensorMessage {
             tensor2: Some(TensorProto::new()),
         }
     }
+}
+
+impl VoidMessage {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Name for StartSampleOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "StartSampleOption";
 }

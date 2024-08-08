@@ -76,6 +76,9 @@
 
 ## 接口设计
 
+由于 `trainer` 是用 `c++` 实现 `op`, `grpc` 是在 `c++` 中请求，`ps` 和 `hub` 是用 `rust` 实现，因此需要
+考虑两种语言实现上的差异。
+
 ### 易用性以及性能
 
 易用性以及性能是接口设计需要重点考虑的两个因素。
@@ -93,8 +96,18 @@
 与 `grpc buffer` 的互相转换过程中，我们可以采取零拷贝的方式进行处理，可以避免拷贝数据的开销，
 从而提升性能。
 
-而在 `rust` 中，`tonic` 已经提供了封装非常好的 `grpc client`, 可以直接使用。
+`c++` 中我们可以通过如下模块来实现所需的接口。
 
+- `GRPCClient`: 基本的 `grpc client`, 负责通用的 `grpc` 请求。 
+- `GRPCServer`: 基本的 `grpc server`, 负责通用的 `grpc` 处理。 
+- `GRPCHandler`: 封装 `grpc` 请求相关的参数。
+- `GRPCTensorCoding`: `tensor` 返回类型相关的序列化与发序列化处理。
+- `GRPCBufferStream`: `grpc byte buffer` 读取相关逻辑。 
+- `SniperGrpcClient`: 处理 `sniper` 中各种请求的 `grpc_client`。
+- `SniperGrpcServer`: 处理 `sniper` 中各种请求的 `grpc_server`。
+
+
+而在 `rust` 中，`tonic` 已经提供了封装非常好的 `grpc client`, 可以直接使用。`
 
 ## 参考
 

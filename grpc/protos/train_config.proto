@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package sniper;
+
+import "google/protobuf/any.proto";
+
+option cc_enable_arenas = true;
+
+// basic
+message Basic {
+  string model_name = 1;
+  string author = 2;
+  string desc = 3;
+}
+
+// Cluster Spec
+message HubCluster { repeated string eps = 1; }
+message PsCluster { repeated string eps = 1; }
+message TrainerCluster { repeated string eps = 1; }
+
+// Feature Column
+message NumericColumn { int32 dim = 1; }
+
+message EmbeddingColumn {
+  string emb_table = 1;
+  int32 prefix = 2;
+  int32 sparse_index = 3;
+}
+
+message SeqColumn {
+  string share_emb_table = 1;
+  int32 share_field = 2;
+  int32 share_slot = 3;
+  int32 sparse_index = 4;
+}
+
+message RepeatedString {
+   repeated string value = 1;
+}
+
+// Embedding Table
+message EmbeddingTable {
+  string name = 1;
+  int32 dim = 2;
+  int64 capacity = 3;
+  float load = 4;
+  string hash_func = 5;
+  int64 hash_bucket_size = 6;
+  RepeatedString ps_shard = 7;
+  repeated int32 fields = 8;
+  int32 hit_limit = 9;
+}

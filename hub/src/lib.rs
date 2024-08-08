@@ -3,7 +3,6 @@
 //! This module contains the data processing logic.
 //!
 //! The main component are:
-//! - `task`: Task node for data processing logic.
 //! - `sample`: Data sample for representing the input data for training.
 //! - `pipeline`: Pipeline of composed task nodes for processing specifical data format.
 //! - `hub_server`: Main logic of hub, starting all task nodes.
@@ -14,8 +13,11 @@ mod tool;
 mod sample;
 
 mod batch_assembler;
+mod feed_sample;
 mod hdfs_reader;
-mod local_reader;
-mod task;
+mod start_sample;
 
-mod request_handler;
+mod pipeline;
+
+pub mod local_reader;
+pub mod request_handler;
