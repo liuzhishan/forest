@@ -37,7 +37,7 @@ impl SniperPs for Ps {
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         // TODO
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }
@@ -48,7 +48,7 @@ impl SniperPs for Ps {
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         // TODO
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }
@@ -58,8 +58,11 @@ impl SniperPs for Ps {
         &self,
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
-        // TODO
-        let mut response = VoidMessage::new();
+        let request_inner = request.into_inner();
+
+        info!("[SniperPs.feed_sample] get feed_sample request: {:?}", request_inner);
+
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }
@@ -67,7 +70,7 @@ impl SniperPs for Ps {
     /// Push.
     async fn push(&self, request: Request<TensorMessage>) -> Result<Response<VoidMessage>, Status> {
         // TODO
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }
@@ -78,7 +81,7 @@ impl SniperPs for Ps {
         request: Request<TensorMessage>,
     ) -> Result<Response<TensorMessage>, Status> {
         // TODO
-        let mut response = TensorMessage::new();
+        let mut response = TensorMessage::default();
 
         Ok(Response::new(response))
     }
@@ -89,7 +92,7 @@ impl SniperPs for Ps {
         request: Request<TensorMessage>,
     ) -> Result<Response<TensorMessage>, Status> {
         // TODO
-        let mut response = TensorMessage::new();
+        let mut response = TensorMessage::default();
 
         Ok(Response::new(response))
     }
@@ -100,7 +103,7 @@ impl SniperPs for Ps {
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         // TODO
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }
@@ -108,7 +111,7 @@ impl SniperPs for Ps {
     /// Save.
     async fn save(&self, request: Request<TensorMessage>) -> Result<Response<VoidMessage>, Status> {
         // TODO
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }
@@ -119,7 +122,7 @@ impl SniperPs for Ps {
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         // TODO
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }
@@ -130,7 +133,7 @@ impl SniperPs for Ps {
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         // TODO
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }
@@ -141,7 +144,7 @@ impl SniperPs for Ps {
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         // TODO
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }

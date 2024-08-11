@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use log::{error, info};
 
+use tokio::time::{sleep, Duration};
 use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
 use util::{error_bail, FeaturePlacement};
 
@@ -102,11 +103,14 @@ impl SingleSamplePipeline {
         let sparse_feature_count = feature_list.sparse_class_names.len() as usize;
         let dense_feature_count = feature_list.dense_class_names.len() as usize;
 
+        let dense_total_size = self.option.dense_total_size as usize;
+
         // Create BatchAssembler.
         let mut batch_assembler = BatchAssembler::new(
             batch_size,
             sparse_feature_count,
             dense_feature_count,
+            dense_total_size,
             line_receiver,
             batch_sender,
         );
@@ -118,9 +122,20 @@ impl SingleSamplePipeline {
         info!("SingleSamplePipeline after batch assembler init");
 
         // Create FeedSample.
+        info!(
+            "start sample, emb_tables: {}, ps_eps: {}",
+            self.option.emb_tables.iter().map(|x| x.name.clone()).collect::<Vec<_>>().join(", "),
+            self.option.ps_eps.join(", "),
+        );
+
         let placement = FeaturePlacement::new(&self.option.emb_tables, &self.option.ps_eps);
 
-        let mut feed_sample = FeedSample::new(self.option.clone(), batch_receiver, placement);
+        let mut feed_sample = FeedSample::new(
+            self.option.clone(),
+            batch_receiver,
+            placement,
+            self.sample_batch_sender.clone(),
+        );
 
         if !feed_sample.init() {
             error_bail!("feed_sample init failed!");
@@ -140,6 +155,10 @@ impl SingleSamplePipeline {
         subsys.start(SubsystemBuilder::new("feed_sample", |a| feed_sample.run(a)));
 
         info!("SingleSamplePipeline start subsys done");
+
+        subsys.on_shutdown_requested().await;
+
+        info!("SingleSamplePipeline shutdown!");
 
         Ok(())
     }

@@ -48,9 +48,21 @@ impl FeaturePlacement {
             let h = compute_hash(&var.name);
             let index = (h % total_ps as u64) as usize;
 
+            info!(
+                "placement, insert ps shard, varname: {}, index: {}, ps_endpoint: {}",
+                var.name.clone(),
+                index,
+                ps_endpoints[index].clone(),
+            );
+
             res.insert(var.name.clone(), vec![ps_endpoints[index].clone()]);
         }
 
         res
+    }
+
+    /// Get ps_endpoints by varname.
+    pub fn get_emb_placement(&self, varname: &String) -> Option<&Vec<String>> {
+        self.ps_shard.get(varname)
     }
 }

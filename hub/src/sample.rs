@@ -34,6 +34,9 @@ pub struct SampleBatch {
     /// Dense feature count.
     pub dense_feature_count: usize,
 
+    /// Dense total_size.
+    pub dense_total_size: usize,
+
     /// Sparse feature signs.
     pub sparse_signs: Vec<Vec<u64>>,
 
@@ -51,7 +54,12 @@ pub struct SampleBatch {
 }
 
 impl SampleBatch {
-    pub fn new(batch_size: usize, sparse_feature_count: usize, dense_feature_count: usize) -> Self {
+    pub fn new(
+        batch_size: usize,
+        sparse_feature_count: usize,
+        dense_feature_count: usize,
+        dense_total_size: usize,
+    ) -> Self {
         let mut sparse_signs = Vec::with_capacity(sparse_feature_count);
         sparse_signs.resize(sparse_feature_count, Vec::new());
 
@@ -74,6 +82,7 @@ impl SampleBatch {
             batch_size,
             sparse_feature_count,
             dense_feature_count,
+            dense_total_size,
             sparse_signs,
             item_indexes,
             dense_features,

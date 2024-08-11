@@ -39,8 +39,14 @@ async fn wait_for_signal_impl() {
     let mut signal_interrupt = signal(SignalKind::interrupt()).unwrap();
 
     tokio::select! {
-        _ = signal_terminate.recv() => tracing::debug!("Received SIGTERM."),
-        _ = signal_interrupt.recv() => tracing::debug!("Received SIGINT."),
+        _ = signal_terminate.recv() => {
+            info!("Received SIGTERM.");
+            tracing::info!("Received SIGTERM.")
+        }
+        _ = signal_interrupt.recv() => {
+            info!("Received SIGINT.");
+            tracing::info!("Received SIGINT.")
+        }
     };
 }
 

@@ -54,7 +54,11 @@ impl LocalReader {
             for line_result in reader.lines() {
                 let line = line_result?;
 
-                info!("LocalReader send line, line.size(): {}", line.len());
+                info!(
+                    "LocalReader send line, line.size(): {}, is_closed: {}",
+                    line.len(),
+                    self.line_sender.is_closed()
+                );
 
                 match self.line_sender.send(line).await {
                     Ok(_) => {}

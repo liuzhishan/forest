@@ -29,6 +29,9 @@ pub struct BatchAssembler {
     /// Dense feature count.
     pub dense_feature_count: usize,
 
+    /// Dense total size.
+    pub dense_total_size: usize,
+
     /// Current items count in buffer.
     batch_index: usize,
 
@@ -53,15 +56,22 @@ impl BatchAssembler {
         batch_size: usize,
         sparse_feature_count: usize,
         dense_feature_count: usize,
+        dense_total_size: usize,
         line_receiver: async_channel::Receiver<String>,
         batch_sender: async_channel::Sender<SampleBatch>,
     ) -> Self {
-        let sample_batch = SampleBatch::new(batch_size, sparse_feature_count, dense_feature_count);
+        let sample_batch = SampleBatch::new(
+            batch_size,
+            sparse_feature_count,
+            dense_feature_count,
+            dense_total_size,
+        );
 
         Self {
             batch_size,
             sparse_feature_count,
             dense_feature_count,
+            dense_total_size,
             batch_index: 0,
             sample_batch,
             line_receiver,
@@ -102,8 +112,6 @@ impl BatchAssembler {
     /// batch_sender channel.
     pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
         loop {
-            let is_closed = self.line_receiver.is_closed();
-
             tokio::select! {
                 line_res = self.line_receiver.recv() => {
                     if line_res.is_err() {
@@ -172,6 +180,7 @@ impl BatchAssembler {
                                 self.batch_size,
                                 self.sparse_feature_count,
                                 self.dense_feature_count,
+                                self.dense_total_size,
                             );
                         }
                     }

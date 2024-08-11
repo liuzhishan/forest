@@ -3,14 +3,17 @@ use std::time::Duration;
 use anyhow::bail;
 use log::{error, info};
 
+use std::collections::HashMap as StdHashMap;
+
+use prost_types::Any;
 use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
 use tonic::{transport::Server, Code, Request, Response, Status};
 use tonic_types::{ErrorDetails, StatusExt};
 
 use grpc::sniper::sniper_hub_server::{SniperHub, SniperHubServer};
 use grpc::sniper::{
-    start_sample_option, DataType, HelloRequest, HelloResponse, StartSampleOption, TensorMessage,
-    VoidMessage,
+    start_sample_option, DataType, HelloRequest, HelloResponse, ReadSampleOption, Role,
+    StartSampleOption, TensorMessage, VoidMessage,
 };
 
 use grpc::sniper::{TensorProto, TensorShapeProto};
@@ -66,7 +69,7 @@ impl SniperHub for Hub {
     ) -> Result<Response<VoidMessage>, Status> {
         info!("start sample start");
 
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
         let mut err_details = ErrorDetails::new();
 
         // Check options.
@@ -148,14 +151,93 @@ impl SniperHub for Hub {
         Ok(Response::new(response))
     }
 
+    /// Read one batch from sample_batch_receiver channel.
     async fn read_sample(
         &self,
         request: Request<TensorMessage>,
     ) -> Result<Response<TensorMessage>, Status> {
-        // TODO
-        let mut response = TensorMessage::new();
+        let mut response = TensorMessage::default();
+        let mut err_details = ErrorDetails::new();
 
-        Ok(Response::new(response))
+        let mut response = TensorMessage::default();
+
+        let mut read_sample_option = ReadSampleOption::default();
+
+        // If receiver is empty, need to wait for next batch.
+        if self.sample_batch_receiver.is_empty() {
+            read_sample_option.need_wait = true;
+        }
+
+        // If receiver is closed, then hub task is done.
+        if self.sample_batch_receiver.is_closed() {
+            read_sample_option.over = true;
+        }
+
+        // options in TensorMessage.
+        let options = Any::from_msg(&read_sample_option);
+
+        if options.is_err() {
+            err_details
+                .add_bad_request_violation("options", "from read_sample_option to options failed!");
+
+            return send_error_response::<TensorMessage>(err_details);
+        }
+
+        // If need wait or is over, return to trainer.
+        if read_sample_option.need_wait || read_sample_option.over {
+            response.options = Some(options.unwrap());
+            return Ok(Response::new(response));
+        }
+
+        match self.sample_batch_receiver.recv().await {
+            Ok(sample_batch) => {
+                read_sample_option.batch_id = sample_batch.batch_id;
+
+                // Save labels to tensor1 of TensorMessage.
+                let dim_single = vec![sample_batch.batch_size as i64];
+                let tensor1 = TensorProto::from_vec(
+                    DataType::DtInt32.into(),
+                    &dim_single,
+                    &sample_batch.labels,
+                );
+
+                // Convert dense features to 1d vec first, and save to tensor2 of TensorMessage.
+                let dims = vec![
+                    sample_batch.batch_size as i64,
+                    sample_batch.dense_total_size as i64,
+                ];
+
+                let mut vec = Vec::with_capacity(sample_batch.dense_total_size);
+                for multi_dense in sample_batch.dense_features.iter() {
+                    for dense_features in multi_dense.iter() {
+                        vec.extend_from_slice(dense_features);
+                    }
+                }
+
+                let tensor2 = TensorProto::from_vec(DataType::DtFloat.into(), &dims, &vec);
+
+                response.role = Role::Hub.into();
+                response.role_id = Into::<i32>::into(Role::Hub) as u32;
+                response.seq_id = sample_batch.batch_id;
+                response.options = Some(options.unwrap());
+
+                response.tensor1 = Some(tensor1);
+                response.tensor2 = Some(tensor2);
+
+                Ok(Response::new(response))
+            }
+            Err(err) => {
+                let metadata: StdHashMap<String, String> = StdHashMap::new();
+
+                err_details.set_error_info(
+                    "options",
+                    "from read_sample_option to options failed!",
+                    metadata,
+                );
+
+                send_error_response::<TensorMessage>(err_details)
+            }
+        }
     }
 
     async fn heartbeat(
@@ -163,7 +245,7 @@ impl SniperHub for Hub {
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         // TODO
-        let mut response = VoidMessage::new();
+        let mut response = VoidMessage::default();
 
         Ok(Response::new(response))
     }

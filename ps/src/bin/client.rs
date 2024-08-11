@@ -4,7 +4,7 @@ use log::{error, info};
 
 /// Test pull.
 async fn test_pull(client: &mut SniperPsClient<tonic::transport::Channel>) -> Result<()> {
-    let request = tonic::Request::new(TensorMessage::new());
+    let request = tonic::Request::new(TensorMessage::default());
 
     info!("Sending request to gRPC Server...");
     // let response = client.pull(request).await?;

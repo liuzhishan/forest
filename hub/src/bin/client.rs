@@ -1,4 +1,5 @@
 use anyhow::{bail, Result};
+use grpc::sniper::EmbeddingTable;
 use grpc::sniper::FeatureList;
 use grpc::sniper::HdfsSrc;
 use grpc::sniper::Role;
@@ -49,6 +50,10 @@ async fn test_start_sample(
         bail!("missing filename argument!");
     }
 
+    // ps_endpoints
+    // TODO: use real ps.
+    start_sample_option.ps_eps.push(String::from("http://[::1]:50062"));
+
     // HdfsSrc
     let mut hdfs_src = HdfsSrc::default();
     hdfs_src.dir = flags.dirname.as_ref().unwrap().clone();
@@ -88,6 +93,19 @@ async fn test_start_sample(
     feature_list.sparse_emb_table = vec![String::from("embedding_0")];
 
     start_sample_option.feature_list = Some(feature_list);
+
+    start_sample_option.dense_total_size = 2;
+
+    let mut embedding_table = EmbeddingTable::default();
+
+    embedding_table.name = String::from("embedding_0");
+    embedding_table.dim = 16;
+    embedding_table.capacity = 0;
+    embedding_table.load = 1.0;
+    embedding_table.hash_bucket_size = 100001;
+    embedding_table.fields = vec![0];
+
+    start_sample_option.emb_tables.push(embedding_table);
 
     let options = Any::from_msg(&start_sample_option)?;
 
