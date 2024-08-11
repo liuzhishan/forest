@@ -7,6 +7,8 @@ use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
 use tonic::{transport::Server, Code, Request, Response, Status};
 use tonic_types::{ErrorDetails, StatusExt};
 
+use dashmap::DashMap;
+
 use grpc::sniper::sniper_ps_server::{SniperPs, SniperPsServer};
 use grpc::sniper::{
     start_sample_option, DataType, HelloRequest, HelloResponse, StartSampleOption, TensorMessage,
@@ -20,7 +22,8 @@ use util::send_error_response;
 ///
 /// Start ps for processing parameters.
 #[derive(Debug)]
-pub struct Ps {}
+pub struct Ps {
+}
 
 impl Ps {
     pub fn new() -> Self {
@@ -60,7 +63,10 @@ impl SniperPs for Ps {
     ) -> Result<Response<VoidMessage>, Status> {
         let request_inner = request.into_inner();
 
-        info!("[SniperPs.feed_sample] get feed_sample request: {:?}", request_inner);
+        info!(
+            "[SniperPs.feed_sample] get feed_sample request: {:?}",
+            request_inner
+        );
 
         let mut response = VoidMessage::default();
 

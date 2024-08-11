@@ -10,6 +10,7 @@
     - [优化器](framework/ps/optimizer.md)
     - [ps 与 trainer](framework/ps/ps_and_trainer.md)
     - [ps 与 hub](framework/ps/ps_and_hub.md)
+    - [HashMap 的选择](framework/ps/hashmap.md)
   - [hub](framework/hub/README.md)
   - [topic](framework/topic/README.md)
     - [grpc](framework/topic/grpc.md)

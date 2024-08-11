@@ -29,3 +29,4 @@ ps 在训练框架中的作用如下所示(TODO: 示意图)。
 - 优化器
 - ps 与 trainer
 - ps 与 hub
+- hashmap 的选择

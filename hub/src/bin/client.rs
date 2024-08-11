@@ -52,7 +52,9 @@ async fn test_start_sample(
 
     // ps_endpoints
     // TODO: use real ps.
-    start_sample_option.ps_eps.push(String::from("http://[::1]:50062"));
+    start_sample_option
+        .ps_eps
+        .push(String::from("http://[::1]:50062"));
 
     // HdfsSrc
     let mut hdfs_src = HdfsSrc::default();

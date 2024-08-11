@@ -195,7 +195,7 @@ impl SniperHub for Hub {
 
                 // Save labels to tensor1 of TensorMessage.
                 let dim_single = vec![sample_batch.batch_size as i64];
-                let tensor1 = TensorProto::from_vec(
+                let tensor1 = TensorProto::with_vec(
                     DataType::DtInt32.into(),
                     &dim_single,
                     &sample_batch.labels,
@@ -214,7 +214,7 @@ impl SniperHub for Hub {
                     }
                 }
 
-                let tensor2 = TensorProto::from_vec(DataType::DtFloat.into(), &dims, &vec);
+                let tensor2 = TensorProto::with_vec(DataType::DtFloat.into(), &dims, &vec);
 
                 response.role = Role::Hub.into();
                 response.role_id = Into::<i32>::into(Role::Hub) as u32;

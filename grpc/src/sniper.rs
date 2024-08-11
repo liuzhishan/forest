@@ -22,7 +22,7 @@ impl TensorShapeProto {
 /// }
 impl TensorProto {
     /// Construct TensorProto from Vec.
-    pub fn from_vec<T: TensorType>(dtype: i32, dim: &Vec<i64>, values: &Vec<T>) -> Self {
+    pub fn with_vec<T: TensorType>(dtype: i32, dim: &Vec<i64>, values: &Vec<T>) -> Self {
         // shape.
         let tensor_shape = Some(TensorShapeProto { dim: dim.clone() });
 

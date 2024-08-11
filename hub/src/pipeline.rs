@@ -124,7 +124,12 @@ impl SingleSamplePipeline {
         // Create FeedSample.
         info!(
             "start sample, emb_tables: {}, ps_eps: {}",
-            self.option.emb_tables.iter().map(|x| x.name.clone()).collect::<Vec<_>>().join(", "),
+            self.option
+                .emb_tables
+                .iter()
+                .map(|x| x.name.clone())
+                .collect::<Vec<_>>()
+                .join(", "),
             self.option.ps_eps.join(", "),
         );
 
