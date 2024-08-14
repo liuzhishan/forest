@@ -4,7 +4,9 @@ use log::{error, info};
 use rand::RngCore;
 use std::sync::Once;
 
+use anyhow::bail;
 use anyhow::Result;
+
 use tokio::time::{sleep, Duration};
 use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle, Toplevel};
 

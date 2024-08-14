@@ -22,8 +22,7 @@ use util::send_error_response;
 ///
 /// Start ps for processing parameters.
 #[derive(Debug)]
-pub struct Ps {
-}
+pub struct Ps {}
 
 impl Ps {
     pub fn new() -> Self {

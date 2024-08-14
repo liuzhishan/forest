@@ -109,7 +109,7 @@ impl SniperHub for Hub {
             let mut single_sample_pipeline =
                 SingleSamplePipeline::new(start_sample_option.clone(), new_sender);
 
-            if !single_sample_pipeline.init() {
+            if !single_sample_pipeline.init().await {
                 error!("single_sample_pipeline init failed!");
             }
 
@@ -130,7 +130,7 @@ impl SniperHub for Hub {
             let mut group_sample_pipeline =
                 GroupSamplePipeline::new(start_sample_option.clone(), new_sender);
 
-            if !group_sample_pipeline.init() {
+            if !group_sample_pipeline.init().await {
                 error!("group_sample_pipeline init failed!");
             }
 

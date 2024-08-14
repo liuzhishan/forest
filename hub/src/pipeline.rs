@@ -46,7 +46,7 @@ impl SingleSamplePipeline {
         }
     }
 
-    pub fn init(&mut self) -> bool {
+    pub async fn init(&mut self) -> bool {
         // TODO
         true
     }
@@ -83,7 +83,7 @@ impl SingleSamplePipeline {
         let filenames = self.get_local_filenames();
         let mut local_reader = LocalReader::new(&filenames, line_sender);
 
-        if !local_reader.init() {
+        if !local_reader.init().await {
             error_bail!(
                 "local_reader init failed! filenames: {}",
                 filenames.join(", ")
@@ -115,7 +115,7 @@ impl SingleSamplePipeline {
             batch_sender,
         );
 
-        if !batch_assembler.init() {
+        if !batch_assembler.init().await {
             error_bail!("batch_assembly init failed!");
         }
 
@@ -134,15 +134,17 @@ impl SingleSamplePipeline {
         );
 
         let placement = FeaturePlacement::new(&self.option.emb_tables, &self.option.ps_eps);
+        let ps_endpoints = &self.option.ps_eps;
 
         let mut feed_sample = FeedSample::new(
             self.option.clone(),
             batch_receiver,
             placement,
             self.sample_batch_sender.clone(),
+            ps_endpoints,
         );
 
-        if !feed_sample.init() {
+        if !feed_sample.init().await {
             error_bail!("feed_sample init failed!");
         }
 
@@ -191,7 +193,7 @@ impl GroupSamplePipeline {
         }
     }
 
-    pub fn init(&mut self) -> bool {
+    pub async fn init(&mut self) -> bool {
         // TODO
         true
     }

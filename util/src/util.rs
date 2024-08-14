@@ -81,8 +81,19 @@ pub fn send_error_response<T>(err_details: ErrorDetails) -> Result<Response<T>, 
     return Err(status);
 }
 
+#[inline]
 pub fn compute_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
     s.finish()
+}
+
+/// Get shard index by sign and shard_num, using bit operation to determin the target shard index.
+///
+/// The parameter shard_num must be bigger than 0.
+///
+/// The result shard index is guaranteed to be in range 0..(shard_num - 1).
+#[inline]
+pub fn get_target_shard_by_sign(sign: u64, shard_num: usize) -> usize {
+    (sign & (shard_num - 1) as u64) as usize
 }

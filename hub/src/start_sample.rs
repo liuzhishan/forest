@@ -27,7 +27,7 @@ impl StartSingleSample {
         }
     }
 
-    pub fn init(&mut self) -> bool {
+    pub async fn init(&mut self) -> bool {
         // TODO
         true
     }
@@ -59,7 +59,7 @@ impl StartGroupSample {
         }
     }
 
-    pub fn init(&mut self) -> bool {
+    pub async fn init(&mut self) -> bool {
         // TODO
         true
     }

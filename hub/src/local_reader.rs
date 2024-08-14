@@ -31,7 +31,7 @@ impl LocalReader {
     }
 
     /// Check all filenames exists.
-    pub fn init(&mut self) -> bool {
+    pub async fn init(&mut self) -> bool {
         if self.filenames.len() > 0 {
             if self.filenames.iter().all(|x| Path::new(x).exists()) {
                 true

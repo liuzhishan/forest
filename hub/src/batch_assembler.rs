@@ -81,7 +81,7 @@ impl BatchAssembler {
         }
     }
 
-    pub fn init(&mut self) -> bool {
+    pub async fn init(&mut self) -> bool {
         true
     }
 

@@ -1,9 +1,22 @@
 use anyhow::{anyhow, Result};
+use log::{error, info};
 use prost::Name;
 
 use tensorflow::{Tensor, TensorType};
 
 tonic::include_proto!("sniper");
+
+impl StartSampleOption {
+    pub fn get_embedding_varnames(&self, sparse_feature_count: usize) -> Vec<String> {
+        match self.feature_list.as_ref() {
+            Some(x) => x.sparse_emb_table.clone(),
+            None => {
+                error!("feature_list is None!");
+                Vec::new()
+            }
+        }
+    }
+}
 
 impl TensorShapeProto {
     pub fn new(dim: &Vec<i64>) -> Self {
