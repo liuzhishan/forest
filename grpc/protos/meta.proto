@@ -14,7 +14,7 @@ enum Role {
   ROLE_HUB = 8;
 }
 
-enum VaraibleType {
+enum VariableType {
   VAR_INVALID = 0;
   VAR_DENSE = 1;
   VAR_EMBEDDING = 2;
@@ -92,7 +92,7 @@ message DefaultOption {}
 
 
 message CreateOption {
-  VaraibleType type = 1;
+  VariableType type = 1;
   TensorShapeProto shape = 2;
   uint32 emb_size = 3;
   uint32 capacity = 4;
@@ -150,9 +150,12 @@ message FeedSampleOption {
 message PullOption {
   bool completed = 1;
   int64 progress = 2;
+  VariableType variable_type = 3;
 }
 
-message PushOption {}
+message PushOption {
+  VariableType variable_type = 1;
+}
 
 enum WorkMode {
   MODE_INVALID = 0;
@@ -215,6 +218,7 @@ message SaveOption {
   int32 shard_idx = 6;
   int32 shard_num = 7;
   int32 base_bt_queue_client_push_limit = 8;
+  VariableType variable_type = 9;
 }
 
 message RestoreOption {

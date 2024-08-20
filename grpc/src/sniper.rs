@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use log::{error, info};
-use prost::Name;
+use prost::{Message, Name};
 
 use tensorflow::{Tensor, TensorType};
 
@@ -55,6 +55,15 @@ impl TensorProto {
             uint64_val: Vec::new(),
         }
     }
+
+    pub fn as_slice<T: TensorType>(&self) -> &[T] {
+        let (head, body, tail) = unsafe { self.tensor_content.align_to::<T>() };
+
+        assert!(head.is_empty());
+        assert!(tail.is_empty());
+
+        body
+    }
 }
 
 impl TensorMessage {}
@@ -66,6 +75,11 @@ impl Name for StartSampleOption {
     const NAME: &'static str = "StartSampleOption";
 }
 
+impl Name for CreateOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "CreateOption";
+}
+
 impl Name for FeedSampleOption {
     const PACKAGE: &'static str = "sniper";
     const NAME: &'static str = "FeedSampleOption";
@@ -74,4 +88,34 @@ impl Name for FeedSampleOption {
 impl Name for ReadSampleOption {
     const PACKAGE: &'static str = "sniper";
     const NAME: &'static str = "ReadSampleOption";
+}
+
+impl Name for FreezeOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "FreezeOption";
+}
+
+impl Name for PushOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "PushOption";
+}
+
+impl Name for PullOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "PullOption";
+}
+
+impl Name for EmbeddingLookupOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "EmbeddingLookupOption";
+}
+
+impl Name for PushGradOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "PushGradOption";
+}
+
+impl Name for SaveOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "SaveOption";
 }

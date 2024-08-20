@@ -97,9 +97,9 @@ struct BatchMessage {
 
 /// Result of EmbeddingLookup.
 #[derive(Default)]
-struct EmbeddingLookupResult {
+pub struct EmbeddingLookupResult {
     /// Embedding sum of a batch.
-    pub values: Vec<f32>,
+    pub values: Vec<Vec<f32>>,
 
     /// Time spend in milliseconds.
     pub time_spends: u64,
@@ -123,18 +123,24 @@ pub struct Embedding {
     capacity: u64,
 
     /// Hash size.
-    hash_size: i32,
+    hash_size: usize,
 
     /// Storage of the SparseParameter.
-    store: DashMap<u64, SparseParameter>,
+    pub store: DashMap<u64, SparseParameter>,
 
     /// Feed queue.
+    ///
+    /// One Embedding may has multi field, the key of outer DashMap if field, the key of inner DashMap
+    /// is batch_id.
     feed_queue: DashMap<i32, DashMap<u64, BatchMessage>>,
 
     /// Max feed_queue size.
     max_feed_queue_size: u64,
 
     /// Lookup queue.
+    ///
+    /// One Embedding may has multi field, the key of outer DashMap if field, the key of inner DashMap
+    /// is batch_id.
     lookup_queue: DashMap<i32, DashMap<u64, BatchMessage>>,
 
     /// Max lookup queue.
@@ -142,6 +148,9 @@ pub struct Embedding {
 
     /// Max pull key count for each request. Fixed in new.
     max_pull_key_count: usize,
+
+    /// Fields.
+    fields: Vec<i32>,
 }
 
 impl Embedding {
@@ -151,11 +160,20 @@ impl Embedding {
         embedding_size: usize,
         shard_num: usize,
         shard_index: usize,
+        fields: &Vec<i32>,
         capacity: u64,
-        hash_size: i32,
+        hash_size: usize,
         max_feed_queue_size: u64,
         max_lookup_queue_size: u64,
     ) -> Self {
+        let feed_queue = DashMap::new();
+        let lookup_queue = DashMap::new();
+
+        for field in fields {
+            feed_queue.insert(field.clone(), DashMap::new());
+            lookup_queue.insert(field.clone(), DashMap::new());
+        }
+
         Self {
             varname: varname.clone(),
             embedding_size,
@@ -164,11 +182,12 @@ impl Embedding {
             shard_index,
             capacity,
             hash_size,
-            feed_queue: DashMap::new(),
+            feed_queue,
             max_feed_queue_size,
-            lookup_queue: DashMap::new(),
+            lookup_queue,
             max_lookup_queue_size,
             max_pull_key_count: 100000,
+            fields: fields.clone(),
         }
     }
 
@@ -275,8 +294,8 @@ impl Embedding {
         &self,
         batch_id: u64,
         option: &PushOption,
-        keys: &Vec<u64>,
-        values: &Vec<f32>,
+        keys: &[u64],
+        values: &[f32],
     ) -> Result<()> {
         let total = self.embedding_size * 2;
 
@@ -373,7 +392,7 @@ impl Embedding {
         out_option: &mut PullOption,
         keys: &mut Vec<u64>,
         values: &mut Vec<f32>,
-    ) -> Result<()> {
+    ) {
         // First request, we need to set all `is_visited` to `false` for all keys.
         if option.progress == 0 {
             self.reset_all_visited();
@@ -400,8 +419,6 @@ impl Embedding {
 
         out_option.progress = option.progress + total;
         out_option.completed = out_option.progress == self.store.len() as i64;
-
-        Ok(())
     }
 
     /// Get embedding lookup result for field and batch_id, sum the weights of signs.
@@ -425,7 +442,10 @@ impl Embedding {
         let mut res = EmbeddingLookupResult::default();
 
         // Initialize with 0.0.
-        res.values.resize(self.embedding_size * batch_size, 0.0);
+        res.values.resize(batch_size, Vec::new());
+        for i in 0..res.values.len() {
+            res.values[i].resize(self.embedding_size, 0.0);
+        }
 
         // get batch_message received from hub.
         let batch_message = match self.pull_feed_queue(field, batch_id) {
@@ -450,22 +470,21 @@ impl Embedding {
 
         // get embedding parameter by sign and sum.
         for i in 0..total {
-            let item_index = item_indexes[i];
+            let item_index = item_indexes[i] as usize;
 
-            if (item_index as usize + 1) * self.embedding_size > res.values.len() {
+            if item_index > res.values.len() {
                 error_bail!(
-                    "out of range, item_index: {}, res.values.len(): {}, (item_index + 1) * self.embedding_size: {}",
+                    "out of range, item_index: {}, res.values.len(): {}",
                     item_index,
                     res.values.len(),
-                    (item_index as usize + 1) * self.embedding_size,
                 );
             }
 
             match self.store.get(&signs[i]) {
                 Some(x) => {
-                    // If found sign, copy the embedding weight to res.values.
+                    // If found sign, sum the embedding weight to res.values.
                     for j in 0..self.embedding_size {
-                        res.values[item_index as usize * self.embedding_size + j] = x.weight[j];
+                        res.values[item_index][j] += x.weight[j];
                     }
                 }
                 None => {

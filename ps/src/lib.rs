@@ -13,5 +13,9 @@ pub use request_handler::Ps;
 
 mod dense;
 mod embedding;
+mod env;
+mod scheduler;
 mod sign_converter;
 mod variable_manager;
+
+mod checkpoint;

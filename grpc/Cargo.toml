@@ -16,6 +16,9 @@ prost-types = "0.13.1"
 tensorflow = "0.21.0"
 tensorflow-sys = "0.24.0"
 tensorflow-sys-runtime = "0.2.0"
+tokio = { version = "1.39", features = ["full"] }
+tracing = "0.1.37"
+tonic-types = "0.12"
 
 [build-dependencies]
 tonic-build = "0.12"

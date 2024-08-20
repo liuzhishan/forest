@@ -17,7 +17,7 @@ use grpc::sniper::{
 };
 
 use grpc::sniper::{TensorProto, TensorShapeProto};
-use util::send_error_response;
+use grpc::tool::{get_request_inner_options, send_bad_request_error};
 
 use super::pipeline::GroupSamplePipeline;
 use super::pipeline::SingleSamplePipeline;
@@ -70,35 +70,18 @@ impl SniperHub for Hub {
         info!("start sample start");
 
         let mut response = VoidMessage::default();
-        let mut err_details = ErrorDetails::new();
 
-        // Check options.
         let request_inner = request.into_inner();
-
-        info!("start sample request.seq_id: {}", request_inner.seq_id);
-
-        if request_inner.options.is_none() {
-            err_details.add_bad_request_violation("options", "options is None");
-        }
-
-        if err_details.has_bad_request_violations() {
-            return send_error_response::<VoidMessage>(err_details);
-        }
-
-        let start_sample_option_res = request_inner.options.unwrap().to_msg::<StartSampleOption>();
-
-        // Check StartSampleOption.
-        if start_sample_option_res.is_err() {
-            err_details
-                .add_bad_request_violation("options", "options is invalid StartSampleOption");
-        }
-
-        if err_details.has_bad_request_violations() {
-            return send_error_response::<VoidMessage>(err_details);
-        }
-
-        let mut start_sample_option = start_sample_option_res.unwrap();
-
+        let mut start_sample_option =
+            match get_request_inner_options::<StartSampleOption>(&request_inner) {
+                Some(x) => x,
+                None => {
+                    return send_bad_request_error(
+                        "options",
+                        "options is invalid StartSampleOption",
+                    );
+                }
+            };
         start_sample_option.parallel = num_cpus::get() as i32;
 
         let new_sender = self.sample_batch_sender.clone();
@@ -177,10 +160,10 @@ impl SniperHub for Hub {
         let options = Any::from_msg(&read_sample_option);
 
         if options.is_err() {
-            err_details
-                .add_bad_request_violation("options", "from read_sample_option to options failed!");
-
-            return send_error_response::<TensorMessage>(err_details);
+            return send_bad_request_error::<TensorMessage>(
+                "options",
+                "from read_sample_option to options failed!",
+            );
         }
 
         // If need wait or is over, return to trainer.
@@ -226,17 +209,10 @@ impl SniperHub for Hub {
 
                 Ok(Response::new(response))
             }
-            Err(err) => {
-                let metadata: StdHashMap<String, String> = StdHashMap::new();
-
-                err_details.set_error_info(
-                    "options",
-                    "from read_sample_option to options failed!",
-                    metadata,
-                );
-
-                send_error_response::<TensorMessage>(err_details)
-            }
+            Err(err) => send_bad_request_error::<TensorMessage>(
+                "options",
+                "from read_sample_option to options failed!",
+            ),
         }
     }
 

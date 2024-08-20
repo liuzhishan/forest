@@ -742,8 +742,11 @@ dependencies = [
  "tensorflow",
  "tensorflow-sys",
  "tensorflow-sys-runtime",
+ "tokio",
  "tonic",
  "tonic-build",
+ "tonic-types",
+ "tracing",
 ]
 
 [[package]]
@@ -1460,12 +1463,15 @@ dependencies = [
  "async-channel",
  "base64",
  "clap",
+ "crossbeam-utils",
  "dashmap",
  "env_logger",
  "grpc",
  "hashbrown 0.11.2",
+ "lock_api",
  "log",
  "num_cpus",
+ "parking_lot_core",
  "prost",
  "prost-types",
  "rand",

@@ -45,3 +45,19 @@ message GpuPsFeature64 {
   repeated uint64 features = 1;
   repeated int32 item_indices = 2;
 }
+
+/// For saving to file.
+message GpuPsSparseData {
+  string name = 1;
+  repeated uint64 id = 2;
+  repeated float val = 3;
+  int32 embedding_size = 4;
+}
+
+/// For saving to file.
+message GpuPsDenseData {
+  string name = 1;
+  repeated float value = 2;
+  int32 offset_idx = 3;
+  int32 total_length = 4;
+}
