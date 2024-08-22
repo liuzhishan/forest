@@ -53,7 +53,7 @@ pub struct CheckpointContext {
     /// Inner shard total, how many shard should one embedding should be split into in one ps.
     pub inner_shard_total: usize,
 
-    /// Max iteration count of record for saving parameters.
+    /// Max iteration count of record for saving parameters. Default is 200_000.
     pub max_record_iterate_count: i32,
 
     /// Dim of variable embedding parameters.

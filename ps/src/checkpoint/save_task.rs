@@ -1,33 +1,24 @@
 use anyhow::{anyhow, bail, Result};
-use grpc::sniper::{GpuPsSparseData, VariableType};
-use util::error_bail;
+use grpc::sniper::{GpuPsDenseData, GpuPsSparseData, VariableType};
+use std::cmp::min;
 use std::{fs::File, io::Write};
+use util::error_bail;
 
+use log::{error, info};
 use std::marker::PhantomData;
-use log::{info, error};
 
 use base64::Engine;
 use base64::{engine::general_purpose::STANDARD, read::DecoderReader};
 
+use crate::dense::DenseVariable;
 use crate::embedding::Embedding;
 use crate::env::Env;
 
+use super::file_handler::{FileWriter, LocalFileWriter};
 use super::tool::CheckpointContext;
 
-/// Trait for write to file.
-///
-/// Maybe local file or hdfs file.
-pub trait FileWriter: Sized {
-    /// Open a file by filename.
-    fn new(filename: &String) -> Result<Self>;
-
-    /// Write content in buf, return the total bytes.
-    fn write(&mut self, buf: &[u8]) -> Result<usize>;
-
-    /// Flush the content in buffer to target.
-    fn flush(&mut self) -> Result<()>;
-}
-
+/// Encode message to base64, then save to one line in file.
+#[inline]
 pub fn append_proto_base64_to_file<M: prost::Message, W: FileWriter>(
     message: &M,
     writer: &mut W,
@@ -37,7 +28,8 @@ pub fn append_proto_base64_to_file<M: prost::Message, W: FileWriter>(
     message.encode(&mut buf)?;
 
     let s = STANDARD.encode(&buf);
-    let total = writer.write(s.as_bytes())?;
+    let _ = writer.write(s.as_bytes())?;
+    let _ = writer.write("\n".as_bytes())?;
 
     Ok(())
 }
@@ -64,7 +56,8 @@ impl<W: FileWriter> SaveSparseTask<W> {
     }
 
     /// Get final filename to write by parameters in context.
-    fn get_prefix(&self) -> String {
+    #[inline]
+    fn get_filename_prefix(&self) -> String {
         format!(
             "{}/{}.{}_{}",
             self.context.path.clone(),
@@ -90,7 +83,7 @@ impl<W: FileWriter> SaveSparseTask<W> {
             );
         }
 
-        let prefix = self.get_prefix();
+        let prefix = self.get_filename_prefix();
 
         let weight_filename = format!("{}.weight", prefix);
         let mut weight_writer = W::new(&weight_filename)?;
@@ -106,12 +99,20 @@ impl<W: FileWriter> SaveSparseTask<W> {
 
         let mut weight_sparse = GpuPsSparseData::default();
 
-        weight_sparse.id.reserve(self.context.max_record_iterate_count as usize);
-        weight_sparse.val.reserve(self.context.max_record_iterate_count as usize * variable_dim);
+        weight_sparse
+            .id
+            .reserve(self.context.max_record_iterate_count as usize);
+        weight_sparse
+            .val
+            .reserve(self.context.max_record_iterate_count as usize * variable_dim);
 
         let mut adagrad_sparse = GpuPsSparseData::default();
-        adagrad_sparse.id.reserve(self.context.max_record_iterate_count as usize);
-        adagrad_sparse.val.reserve(self.context.max_record_iterate_count as usize * optimizer_dim);
+        adagrad_sparse
+            .id
+            .reserve(self.context.max_record_iterate_count as usize);
+        adagrad_sparse
+            .val
+            .reserve(self.context.max_record_iterate_count as usize * optimizer_dim);
 
         let inner_shard = self.context.inner_shard as u64;
         let inner_shard_total = self.context.inner_shard_total as u64;
@@ -135,10 +136,14 @@ impl<W: FileWriter> SaveSparseTask<W> {
                 total_count += 1;
 
                 weight_sparse.id.push(x.key().clone());
-                weight_sparse.val.extend_from_slice(&weight[0..variable_dim]);
+                weight_sparse
+                    .val
+                    .extend_from_slice(&weight[0..variable_dim]);
 
                 adagrad_sparse.id.push(x.key().clone());
-                adagrad_sparse.val.extend_from_slice(&weight[variable_dim..weight.len()]);
+                adagrad_sparse
+                    .val
+                    .extend_from_slice(&weight[variable_dim..weight.len()]);
 
                 if weight_sparse.id.len() >= self.context.max_record_iterate_count as usize {
                     // When reach max_record_iterate_count, save one line to file, then clear.
@@ -175,35 +180,69 @@ impl<W: FileWriter> SaveSparseTask<W> {
     }
 }
 
-/// Write to local file.
-pub struct LocalFileWriter {
-    /// filename to write.
-    filename: String,
-    writer: File,
+/// Save dense to file.
+pub struct SaveDenseTask<W: FileWriter> {
+    /// Parameters for saving.
+    pub context: CheckpointContext,
+
+    /// W is used in `run` function.
+    marker: PhantomData<W>,
 }
 
-impl FileWriter for LocalFileWriter {
-    fn new(filename: &String) -> Result<Self> {
-        match File::create(filename) {
-            Ok(writer) => Ok(Self {
-                filename: filename.clone(),
-                writer,
-            }),
-            Err(err) => Err(err.into()),
+impl<W: FileWriter> SaveDenseTask<W> {
+    pub fn new(context: &CheckpointContext) -> Self {
+        Self {
+            context: context.clone(),
+            marker: PhantomData,
         }
     }
 
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        match self.writer.write(buf) {
-            Ok(x) => Ok(x),
-            Err(err) => Err(err.into()),
-        }
+    /// Get final filename to write by parameters in context.
+    #[inline]
+    fn get_final_filename(&self) -> String {
+        // Dense varname may have special chars, such as `/`, `:`, we encode the varname to base64 first.
+        let varname_base64 = STANDARD.encode(&self.context.varname);
+
+        format!("{}/{}.dense", self.context.path.clone(), varname_base64,)
     }
 
-    fn flush(&mut self) -> Result<()> {
-        match self.writer.flush() {
-            Ok(_) => Ok(()),
-            Err(err) => Err(err.into()),
+    pub fn run(&self, dense: &DenseVariable) -> Result<()> {
+        // Max size is 4m.
+        let max_size = 4_194_304;
+        let total = dense.values.len();
+
+        let final_filename = self.get_final_filename();
+        let mut writer = W::new(&final_filename)?;
+
+        let mut dense_data = GpuPsDenseData::default();
+
+        dense_data.name = self.context.varname.clone();
+        dense_data.value.reserve(max_size);
+
+        let n: usize = total / max_size;
+
+        for i in 0..(n + 1) {
+            let start = i * max_size;
+            let end = min((i + 1) * max_size, total);
+
+            // Save `max_size` each line.
+            dense_data
+                .value
+                .extend_from_slice(&dense.values[start..end]);
+
+            // Set offset and length. This is important, since restore need the index.
+            dense_data.offset_idx = start as i32;
+            dense_data.total_length = (end - start + 1) as i32;
+
+            append_proto_base64_to_file(&dense_data, &mut writer)?;
+
+            // Clear for next processing.
+            dense_data.value.clear();
         }
+
+        Ok(())
     }
 }
+
+pub type SaveSparseToLocalTask = SaveSparseTask<LocalFileWriter>;
+pub type SaveDenseToLocalTask = SaveDenseTask<LocalFileWriter>;

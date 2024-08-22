@@ -10,14 +10,17 @@ use util::error_bail;
 ///
 /// Such as dense feature, network parameters. The name and dims must be provied on construction.
 pub struct DenseVariable {
-    /// varname
-    varname: String,
+    /// Varname.
+    pub varname: String,
 
-    /// dims
-    dims: Vec<usize>,
+    /// Dims
+    pub dims: Vec<usize>,
 
-    /// vlues.
-    values: Vec<f32>,
+    /// Total size of all dims.
+    pub total_size: usize,
+
+    /// Vlues.
+    pub values: Vec<f32>,
 }
 
 impl DenseVariable {
@@ -29,22 +32,47 @@ impl DenseVariable {
         Self {
             varname: varname.clone(),
             dims: dims.clone(),
+            total_size,
             values,
         }
     }
 
     /// Save the parameters to self.values.
     pub fn push(&mut self, values: &[f32]) -> Result<()> {
-        if values.len() != self.values.len() {
+        if values.len() != self.total_size {
             error_bail!(
-                "values.len() != self.values.len(), values.len(): {}, self.values.len(): {}",
+                "values.len() != self.total_size, values.len(): {}, self.total_size: {}",
                 values.len(),
-                self.values.len(),
+                self.total_size,
             );
         }
 
+        self.values = values.to_vec();
+
+        Ok(())
+    }
+
+    /// Save values slice to position if start.
+    ///
+    /// Need to check overflow.
+    pub fn push_from_slice(&mut self, values: &[f32], start: usize) -> Result<()> {
+        // Index should not be bigger than total_size.
+        if start + values.len() > self.total_size {
+            return Err(anyhow!(
+                "out of range, start + values.len() > self.total_size, start: {}, values.len(): {}, total_size: {}",
+                start,
+                values.len(),
+                self.total_size,
+            ));
+        }
+
+        // This only happens the first time some values are pushed.
+        if start + values.len() >= self.values.len() {
+            self.values.resize(self.total_size, 0.0);
+        }
+
         for i in 0..values.len() {
-            self.values[i] = values[i];
+            self.values[i + start] = values[i];
         }
 
         Ok(())

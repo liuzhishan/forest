@@ -230,6 +230,8 @@ message RestoreOption {
   // for response
   bool finish = 5;
   string errmsg = 6;
+
+  VariableType variable_type = 7;
 }
 
 message CompleteOption {}

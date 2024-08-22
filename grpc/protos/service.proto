@@ -40,5 +40,5 @@ service SniperPs {
   rpc Restore(TensorMessage) returns (VoidMessage);
   rpc Complete(TensorMessage) returns (VoidMessage);
 
-  rpc Heartbeat(TensorMessage) returns (VoidMessage);
+  rpc Heartbeat(TensorMessage) returns (TensorMessage);
 }

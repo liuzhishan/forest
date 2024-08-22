@@ -70,7 +70,51 @@ impl SparseParameter {
         }
     }
 
+    #[inline]
     pub fn with_weight(weight: Vec<f32>) -> Self {
+        Self {
+            weight,
+            is_visited: false,
+        }
+    }
+
+    #[inline]
+    pub fn with_embedding_weight(embedding_weight: Vec<f32>) -> Self {
+        Self::with_embedding_weight_slice(embedding_weight.as_slice())
+    }
+
+    #[inline]
+    pub fn with_optimizer_weight(optimizer_weight: Vec<f32>) -> Self {
+        Self::with_optimizer_weight_slice(&optimizer_weight)
+    }
+
+    /// Construct SparseParameter from embedding weight of optimizer weight.
+    #[inline]
+    pub fn with_embedding_weight_slice(embedding_weight: &[f32]) -> Self {
+        Self::with_half_slice(embedding_weight, true)
+    }
+
+    /// Construct SparseParameter from optimizer weight of optimizer weight.
+    #[inline]
+    pub fn with_optimizer_weight_slice(optimizer_weight: &[f32]) -> Self {
+        Self::with_half_slice(optimizer_weight, false)
+    }
+
+    /// Construct SparseParameter from embedding weight or optimizer weight, use `is_embedding_weight`
+    /// to distinguish.
+    pub fn with_half_slice(param: &[f32], is_embedding_weight: bool) -> Self {
+        let embedding_size = param.len();
+
+        let mut weight = vec![0.0; embedding_size * 2];
+
+        for i in 0..embedding_size {
+            if is_embedding_weight {
+                weight[i] = param[i];
+            } else {
+                weight[i + embedding_size] = param[i];
+            }
+        }
+
         Self {
             weight,
             is_visited: false,
@@ -108,22 +152,22 @@ pub struct EmbeddingLookupResult {
 /// Embedding parameters.
 pub struct Embedding {
     /// Embedding varname.
-    varname: String,
+    pub varname: String,
 
     /// Embedding size.
-    embedding_size: usize,
+    pub embedding_size: usize,
 
     /// Shard num of one sparse feature, default is 1.
-    shard_num: usize,
+    pub shard_num: usize,
 
     /// Shard index of current Embedding.
-    shard_index: usize,
+    pub shard_index: usize,
 
     /// Capacity of store, used for LRU.
-    capacity: u64,
+    pub capacity: u64,
 
     /// Hash size.
-    hash_size: usize,
+    pub hash_size: usize,
 
     /// Storage of the SparseParameter.
     pub store: DashMap<u64, SparseParameter>,
@@ -150,7 +194,7 @@ pub struct Embedding {
     max_pull_key_count: usize,
 
     /// Fields.
-    fields: Vec<i32>,
+    pub fields: Vec<i32>,
 }
 
 impl Embedding {

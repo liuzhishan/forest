@@ -119,3 +119,13 @@ impl Name for SaveOption {
     const PACKAGE: &'static str = "sniper";
     const NAME: &'static str = "SaveOption";
 }
+
+impl Name for RestoreOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "RestoreOption";
+}
+
+impl Name for HeartbeatOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "HeartbeatOption";
+}
