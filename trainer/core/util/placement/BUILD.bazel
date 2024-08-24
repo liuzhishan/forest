@@ -1,0 +1,20 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "feature_placement",
+    hdrs = [
+        "auto_shard.h",
+        "feature_placement.h",
+    ],
+    srcs = [
+        "auto_shard.cc",
+        "feature_placement.cc",
+    ],
+    deps = [
+        "//klearn/core/base:base",
+        "//klearn/core/proto:meta_proto",
+        "@jsoncpp_git//:jsoncpp"
+    ]
+)

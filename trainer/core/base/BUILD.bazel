@@ -1,0 +1,45 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "base",
+    hdrs = [
+        "config.h",
+        "status.h",
+        "threadpool.h",
+        "hash.h",
+        "util.h",
+        "semaphore.h"
+    ],
+    srcs = [
+        "status.cc",
+        "threadpool.cc",
+        "util.cc",
+        "semaphore.cc"
+    ],
+    copts = [
+        "-mavx",
+        "-mf16c"
+    ],
+    deps = [
+        "//csrc/common/spdlog:headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional"
+    ]
+)
+
+cc_test(
+    name = "threadpool_test",
+    copts = [
+        "-g",
+        "-O3",
+        "-Wall",
+    ],
+    linkstatic = 1,
+    srcs = glob(["threadpool_test.cc"]),
+    deps = [
+        ":base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

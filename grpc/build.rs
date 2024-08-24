@@ -1,8 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let iface_files = &[
-        "protos/meta.proto",
-        "protos/feature.proto",
-        "protos/service.proto",
+        "proto/meta.proto",
+        "proto/feature.proto",
+        "proto/service.proto",
     ];
     let dirs = &["."];
 

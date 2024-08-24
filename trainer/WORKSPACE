@@ -1,0 +1,37 @@
+workspace(name = "sniper")
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository") 
+
+# We must check the bazel version before trying to parse any other BUILD
+# files, in case the parsing of those build files depends on the bazel
+# version we require here.
+load(":version_check.bzl", "check_bazel_version_at_least")
+check_bazel_version_at_least("0.19.0")
+
+load(":workspace.bzl", "sniper_workspace")
+sniper_workspace()
+
+load("//third_party/toolchains/tf:tf_configure.bzl", "tf_configure")
+tf_configure(name = "local_config_tf")
+
+
+# C++ rules for Bazel.
+http_archive(
+    name = "rules_cc",
+    urls = ["https://github.com/bazelbuild/rules_cc/archive/9e10b8a6db775b1ecd358d8ddd3dab379a2c29a5.zip"],
+    strip_prefix = "rules_cc-9e10b8a6db775b1ecd358d8ddd3dab379a2c29a5",
+    sha256 = "954b7a3efc8752da957ae193a13b9133da227bdacf5ceb111f2e11264f7e8c95",
+)
+
+# Google Glog.
+http_archive(
+    name = "com_github_google_glog",
+    strip_prefix = "glog-ba8a9f6952d04d1403b97df24e6836227751454e",
+    sha256 = "9b4867ab66c33c41e2672b5de7e3133d38411cdb75eeb0d2b72c88bb10375c71",
+    url = "https://github.com/google/glog/archive/ba8a9f6952d04d1403b97df24e6836227751454e.zip",
+    build_file_content = "\n".join([
+        "load(\"//:bazel/glog.bzl\", \"glog_library\")",
+        "glog_library(with_gflags=0)",
+    ])
+)
