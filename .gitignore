@@ -3,3 +3,6 @@
 **/data/
 **/bazel-bin/*
 **/trainer_ops.so
+**/MODULE.bazel
+**/MODULE.bazel.lock
+**/bazel-*
