@@ -1,2 +1,5 @@
-/target
+**/target
 **/node_modules/
+**/data/
+**/bazel-bin/*
+**/trainer_ops.so

@@ -10,7 +10,7 @@ use log::info;
 
 use clap::Parser;
 
-use grpc::sniper::sniper_hub_client::SniperHubClient;
+use grpc::sniper::sniper_client::SniperClient;
 use grpc::sniper::HelloRequest;
 use grpc::sniper::TensorMessage;
 
@@ -18,7 +18,7 @@ use prost_types::Any;
 use util::Flags;
 
 /// Test say_hello.
-async fn test_hello(client: &mut SniperHubClient<tonic::transport::Channel>) -> Result<()> {
+async fn test_hello(client: &mut SniperClient<tonic::transport::Channel>) -> Result<()> {
     let request = tonic::Request::new(HelloRequest {
         name: "Tonic".into(),
     });
@@ -34,7 +34,7 @@ async fn test_hello(client: &mut SniperHubClient<tonic::transport::Channel>) -> 
 /// Test StartSample.
 async fn test_start_sample(
     flags: &Flags,
-    client: &mut SniperHubClient<tonic::transport::Channel>,
+    client: &mut SniperClient<tonic::transport::Channel>,
 ) -> Result<()> {
     let mut start_sample_option = StartSampleOption::default();
 
@@ -138,7 +138,7 @@ async fn main() -> Result<()> {
 
     util::init_log();
 
-    let mut client = SniperHubClient::connect("http://[::1]:50052").await?;
+    let mut client = SniperClient::connect("http://[::1]:50052").await?;
 
     test_start_sample(&flags, &mut client).await?;
 

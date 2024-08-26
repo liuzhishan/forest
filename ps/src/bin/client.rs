@@ -1,9 +1,9 @@
 use anyhow::Result;
-use grpc::sniper::{sniper_ps_client::SniperPsClient, TensorMessage};
+use grpc::sniper::{sniper_client::SniperClient, TensorMessage};
 use log::{error, info};
 
 /// Test pull.
-async fn test_pull(client: &mut SniperPsClient<tonic::transport::Channel>) -> Result<()> {
+async fn test_pull(client: &mut SniperClient<tonic::transport::Channel>) -> Result<()> {
     let request = tonic::Request::new(TensorMessage::default());
 
     info!("Sending request to gRPC Server...");
@@ -18,7 +18,7 @@ async fn test_pull(client: &mut SniperPsClient<tonic::transport::Channel>) -> Re
 async fn main() -> Result<()> {
     util::init_log();
 
-    let mut client = SniperPsClient::connect("http://[::1]:50062").await?;
+    let mut client = SniperClient::connect("http://[::1]:50062").await?;
 
     test_pull(&mut client).await?;
 

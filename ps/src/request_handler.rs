@@ -14,7 +14,7 @@ use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
 use tonic::{transport::Server, Code, Request, Response, Status};
 use tonic_types::{ErrorDetails, StatusExt};
 
-use grpc::sniper::sniper_ps_server::{SniperPs, SniperPsServer};
+use grpc::sniper::sniper_server::{Sniper, SniperServer};
 use grpc::sniper::{
     start_sample_option, CheckPointTarget, CheckPointType, CreateOption, DataType,
     EmbeddingLookupOption, FeedSampleOption, FreezeOption, GpuPsDenseData, HeartbeatOption,
@@ -771,7 +771,7 @@ impl Ps {
 }
 
 #[tonic::async_trait]
-impl SniperPs for Ps {
+impl Sniper for Ps {
     /// Create ps vars embedding table and dense var parameters in ps.
     async fn create(
         &self,
@@ -1416,5 +1416,44 @@ impl SniperPs for Ps {
                 }
             }
         }
+    }
+
+    // Below are Services for hub, no need implementation for ps.
+
+    async fn say_hello(
+        &self,
+        request: Request<HelloRequest>,
+    ) -> Result<Response<HelloResponse>, Status> {
+        info!("say hello");
+
+        let response = HelloResponse {
+            message: format!("Hello {}!", request.into_inner().name).into(),
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn start_sample(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        let response = VoidMessage::default();
+        Ok(Response::new(response))
+    }
+
+    async fn read_sample(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<TensorMessage>, Status> {
+        let response = TensorMessage::default();
+        Ok(Response::new(response))
+    }
+
+    async fn update_hub_shard(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        let response = VoidMessage::default();
+        Ok(Response::new(response))
     }
 }

@@ -10,7 +10,7 @@ use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
 use tonic::{transport::Server, Code, Request, Response, Status};
 use tonic_types::{ErrorDetails, StatusExt};
 
-use grpc::sniper::sniper_hub_server::{SniperHub, SniperHubServer};
+use grpc::sniper::sniper_server::{Sniper, SniperServer};
 use grpc::sniper::{
     start_sample_option, DataType, HelloRequest, HelloResponse, ReadSampleOption, Role,
     StartSampleOption, TensorMessage, VoidMessage,
@@ -48,7 +48,7 @@ impl Hub {
 }
 
 #[tonic::async_trait]
-impl SniperHub for Hub {
+impl Sniper for Hub {
     async fn say_hello(
         &self,
         request: Request<HelloRequest>,
@@ -216,13 +216,82 @@ impl SniperHub for Hub {
         }
     }
 
-    async fn heartbeat(
+    async fn update_hub_shard(
         &self,
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
-        // TODO
-        let mut response = VoidMessage::default();
+        Ok(Response::new(VoidMessage::default()))
+    }
 
-        Ok(Response::new(response))
+    async fn heartbeat(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<TensorMessage>, Status> {
+        Ok(Response::new(TensorMessage::default()))
+    }
+
+    // Below are services for ps, no need for implementation for hub.
+    async fn create(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        Ok(Response::new(VoidMessage::default()))
+    }
+
+    async fn freeze(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        Ok(Response::new(VoidMessage::default()))
+    }
+
+    async fn feed_sample(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        Ok(Response::new(VoidMessage::default()))
+    }
+
+    async fn push(&self, request: Request<TensorMessage>) -> Result<Response<VoidMessage>, Status> {
+        Ok(Response::new(VoidMessage::default()))
+    }
+
+    async fn pull(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<TensorMessage>, Status> {
+        Ok(Response::new(TensorMessage::default()))
+    }
+
+    async fn embedding_lookup(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<TensorMessage>, Status> {
+        Ok(Response::new(TensorMessage::default()))
+    }
+
+    async fn push_grad(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        Ok(Response::new(VoidMessage::default()))
+    }
+
+    async fn save(&self, request: Request<TensorMessage>) -> Result<Response<VoidMessage>, Status> {
+        Ok(Response::new(VoidMessage::default()))
+    }
+
+    async fn restore(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        Ok(Response::new(VoidMessage::default()))
+    }
+
+    async fn complete(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        Ok(Response::new(VoidMessage::default()))
     }
 }

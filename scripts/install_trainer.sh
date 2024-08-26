@@ -12,13 +12,13 @@ cd ${trainer_path}
 echo "cd to trainer_path: ${trainer_path}"
 
 ./configure.sh
-# bazel clean --expunge
-bazel build core/operators:sniper_ops.so
+bazel clean --expunge
+bazel build trainer/core/operators:trainer_ops.so
 
 # --incompatible_no_support_tools_in_action_inputs=false
-# cp bazel-bin/core/operators/klearn_ops.so klearn
+# cp bazel-bin/core/operators/trainer_ops.so trainer
 
-# cd klearn
+# cd trainer
 # for x in `ls python`; do
 #    if [ ! -L $x ]; then
 #        ln -s python/$x .

@@ -3,7 +3,7 @@ use log::info;
 use tonic::transport::Server;
 use util::wait_for_signal;
 
-use grpc::sniper::sniper_ps_server::SniperPsServer;
+use grpc::sniper::sniper_server::SniperServer;
 use ps::request_handler::Ps;
 
 #[tokio::main]
@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     info!("Starting gRPC Server...");
     Server::builder()
-        .add_service(SniperPsServer::new(ps))
+        .add_service(SniperServer::new(ps))
         .serve_with_shutdown(addr, signal)
         .await?;
 

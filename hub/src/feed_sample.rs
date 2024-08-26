@@ -11,9 +11,8 @@ use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, 
 use util::{error_bail, get_target_shard_by_sign, FeaturePlacement};
 
 use super::sample::SampleBatch;
-use grpc::sniper::sniper_ps_client::SniperPsClient;
 use grpc::sniper::TensorProto;
-use grpc::sniper::{sniper_hub_client::SniperHubClient, FeedSampleOption};
+use grpc::sniper::{sniper_client::SniperClient, FeedSampleOption};
 
 /// Send features to ps and trainer.
 ///
@@ -41,7 +40,7 @@ pub struct FeedSample {
     ps_endpoints: Vec<String>,
 
     /// All ps clients. The key is ps_endpoint.
-    ps_clients: HashMap<String, SniperPsClient<tonic::transport::Channel>>,
+    ps_clients: HashMap<String, SniperClient<tonic::transport::Channel>>,
 }
 
 impl FeedSample {

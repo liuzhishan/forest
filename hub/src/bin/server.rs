@@ -2,7 +2,7 @@ use log::info;
 
 use tonic::transport::Server;
 
-use grpc::sniper::sniper_hub_server::SniperHubServer;
+use grpc::sniper::sniper_server::SniperServer;
 use hub::request_handler::Hub;
 use util::wait_for_signal;
 
@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting gRPC Server...");
     Server::builder()
-        .add_service(SniperHubServer::new(hub))
+        .add_service(SniperServer::new(hub))
         .serve_with_shutdown(addr, signal)
         .await?;
 

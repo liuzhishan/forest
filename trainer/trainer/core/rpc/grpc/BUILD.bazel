@@ -1,0 +1,113 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "grpc_bytebuffer_stream",
+    hdrs = [
+        "grpc_bytebuffer_stream.h",
+    ],
+    srcs = [
+        "grpc_bytebuffer_stream.cc"
+    ],
+    deps = [
+        "//trainer:grpc++",
+        "//trainer/core/rpc:tensor_response",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_github_google_glog//:glog",
+    ]
+)
+
+cc_library(
+    name = "grpc_tensor_coding",
+    hdrs = [
+        "grpc_tensor_coding.h",
+    ],
+    srcs = [
+        "grpc_tensor_coding.cc"
+    ],
+    deps = [
+        "grpc_bytebuffer_stream",
+        "//trainer:grpc++",
+        "//trainer/core/rpc:tensor_response",
+        "@com_github_gflags_gflags//:gflags",
+    ]
+)
+
+cc_test(
+    name = "grpc_tensor_coding_test",
+    linkstatic = 1,
+    srcs = glob(["grpc_tensor_coding_test.cc"]),
+    deps = [
+        ":grpc_tensor_coding",
+        ":grpc_bytebuffer_stream",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+
+cc_library(
+    name = "grpc_client",
+    hdrs = [
+        "grpc_client.h",
+    ],
+    srcs = [
+        "grpc_client.cc"
+    ],
+    deps = [
+        ":grpc_tensor_coding",
+        "//trainer:grpc++",
+        "//trainer/core/base:base",
+        "//trainer/core/rpc:rpc_client",
+        "//trainer/core/util/monitor:monitor",
+        "@com_github_gflags_gflags//:gflags",
+    ]
+)
+
+
+cc_library(
+    name = "grpc_server",
+    hdrs = [
+        "grpc_service.h",
+        "grpc_server.h",
+    ],
+    srcs = [
+        "grpc_server.cc"
+    ],
+    deps = [
+        ":grpc_tensor_coding",
+        "//trainer:grpc++",
+        "//trainer/core/base:base",
+        "//trainer/core/rpc:rpc_server",
+        "//trainer/core/rpc:request_handler",
+        "//trainer/core/util/monitor:monitor",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_github_google_glog//:glog",
+    ]
+)
+
+cc_binary(
+    name = "demo_client",
+    srcs = [
+        "demo_client.cc"
+    ],
+    deps = [
+        ":grpc_client",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_github_google_glog//:glog",
+    ]
+)
+
+
+cc_binary(
+    name = "demo_server",
+    srcs = [
+        "demo_server.cc"
+    ],
+    deps = [
+        ":grpc_server",
+        "//trainer/core/rpc:request_handler",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_github_google_glog//:glog",
+    ]
+)

@@ -1,0 +1,90 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "rpc_client",
+    hdrs = [
+        "rpc_handler.h",
+        "rpc_client.h"
+    ],
+    srcs = [
+        "rpc_client.cc"
+    ],
+    deps = [
+        ":tensor_response",
+        "//trainer/core/base:base",
+        "//trainer/core/proto:service_proto",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_github_google_glog//:glog",
+        "@local_config_tf//:libtensorflow_framework",
+        "@local_config_tf//:tf_header_lib",
+    ]
+)
+
+cc_library(
+    name = "rpc_server",
+    hdrs = [
+        "request_handler.h",
+        "rpc_server.h"
+    ],
+    srcs = [
+        "rpc_server.cc"
+    ],
+    deps = [
+        "//trainer/core/base:base",
+        "//trainer/core/proto:meta_proto",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_github_google_glog//:glog",
+        "@local_config_tf//:libtensorflow_framework",
+        "@local_config_tf//:tf_header_lib",
+    ]
+)
+
+cc_library(
+    name = "request_handler",
+    hdrs = [
+        "request_handler.h",
+        "request_handler_impl.h"
+    ],
+    srcs = [
+        "request_handler_impl.cc"
+    ],
+    deps = [
+        "//trainer/core/base:base",
+        "//trainer/core/proto:meta_proto",
+        "//trainer/core/util/monitor:monitor",
+        "@com_github_gflags_gflags//:gflags",
+        "@com_github_google_glog//:glog",
+        "@local_config_tf//:libtensorflow_framework",
+        "@local_config_tf//:tf_header_lib",
+    ]
+)
+
+cc_library(
+    name = "tensor_response",
+    hdrs = [
+        "tensor_response.h",
+    ],
+    srcs = [
+        "tensor_response.cc"
+    ],
+    deps = [
+        "//trainer/core/base:base",
+        "//trainer/core/proto:meta_proto",
+        "@local_config_tf//:libtensorflow_framework",
+        "@local_config_tf//:tf_header_lib",
+        "@com_github_google_glog//:glog",
+    ]
+)
+
+cc_test(
+    name = "tensor_response_test",
+    linkstatic = 1,
+    srcs = glob(["tensor_response_test.cc"]),
+    deps = [
+        ":tensor_response",
+        "@com_google_googletest//:gtest_main",
+        "@com_github_google_glog//:glog",
+    ],
+)

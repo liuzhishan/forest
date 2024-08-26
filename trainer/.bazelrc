@@ -1,9 +1,8 @@
 build --define=grpc_no_ares=true
 build --copt="-D_GLIBCXX_USE_CXX11_ABI=0"
-build --copt="-DEIGEN_MAX_ALIGN_BYTES=64"
-build --action_env TF_HEADER_DIR="/usr/local/lib/python3.11/site-packages/tensorflow/include"
-build --action_env TF_SHARED_LIBRARY_DIR="/usr/local/lib/python3.11/site-packages/tensorflow"
-build --action_env TF_SHARED_LIBRARY_NAME="libtensorflow_framework.2.dylib"
+build --action_env TF_HEADER_DIR="/Users/liuzhishan/.pyenv/versions/3.6.15/lib/python3.6/site-packages/tensorflow_core/include"
+build --action_env TF_SHARED_LIBRARY_DIR="/Users/liuzhishan/.pyenv/versions/3.6.15/lib/python3.6/site-packages/tensorflow_core"
+build --action_env TF_SHARED_LIBRARY_NAME="libtensorflow_framework.1.dylib"
 build --cxxopt="-std=c++11"
 build --copt="-DGRPC_BAZEL_BUILD"
 build --crosstool_top=@llvm_toolchain//:toolchain"
