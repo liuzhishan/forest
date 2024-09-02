@@ -5,7 +5,7 @@ use tokio::time::{sleep, Duration};
 use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
 use util::{error_bail, FeaturePlacement};
 
-use crate::{batch_assembler::BatchAssembler, feed_sample::FeedSample};
+use crate::{batch_assembler::BatchAssembler, feed_sample::FeedSample, hdfs_reader::HdfsReader};
 
 use super::local_reader::LocalReader;
 
@@ -51,7 +51,7 @@ impl SingleSamplePipeline {
         true
     }
 
-    fn get_local_filenames(&self) -> Vec<String> {
+    fn get_filenames_from_option(&self) -> Vec<String> {
         let mut res = Vec::<String>::new();
 
         // Use hdfs src parameter temperary, change to local src later.
@@ -80,12 +80,12 @@ impl SingleSamplePipeline {
         info!("SingleSamplePipeline after get channel");
 
         // Create LocalReader.
-        let filenames = self.get_local_filenames();
-        let mut local_reader = LocalReader::new(&filenames, line_sender);
+        let filenames = self.get_filenames_from_option();
+        let mut hdfs_reader = HdfsReader::new(&filenames, line_sender);
 
-        if !local_reader.init().await {
+        if !hdfs_reader.init().await {
             error_bail!(
-                "local_reader init failed! filenames: {}",
+                "hdfs_reader init failed! filenames: {}",
                 filenames.join(", ")
             );
         }
@@ -151,8 +151,8 @@ impl SingleSamplePipeline {
         info!("SingleSamplePipeline after init");
 
         // Run the tasks.
-        subsys.start(SubsystemBuilder::new("local_reader", |a| {
-            local_reader.run(a)
+        subsys.start(SubsystemBuilder::new("hdfs_reader", |a| {
+            hdfs_reader.run(a)
         }));
 
         subsys.start(SubsystemBuilder::new("batch_assembler", |a| {

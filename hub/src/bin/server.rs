@@ -5,13 +5,14 @@ use tonic::transport::Server;
 use grpc::sniper::sniper_server::SniperServer;
 use hub::request_handler::Hub;
 use util::wait_for_signal;
+use hub::tool::HUB_SERVER_PORT;
 
 // Runtime to run our server
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     util::init_log();
 
-    let addr = "[::1]:50052".parse()?;
+    let addr = format!("[::1]:{}", HUB_SERVER_PORT).parse()?;
     let hub = Hub::new();
 
     let signal = wait_for_signal();

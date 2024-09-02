@@ -10,6 +10,10 @@ use anyhow::Result;
 use tokio::time::{sleep, Duration};
 use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle, Toplevel};
 
+use hdrs::Client;
+use hdrs::ClientBuilder;
+use std::io::{BufRead, BufReader, Read, Write};
+
 use hub::local_reader::{self, LocalReader};
 use util::{error_bail, init_log, Flags};
 
@@ -62,4 +66,67 @@ async fn test_local_reader() -> Result<()> {
     .handle_shutdown_requests(Duration::from_millis(1000))
     .await
     .map_err(Into::into)
+}
+
+/// Test hdfs client.
+#[test]
+fn test_hdfs() -> Result<()> {
+    setup();
+
+    let name_node = "default";
+
+    let fs = ClientBuilder::new(&name_node).connect()?;
+
+    let path = format!("/home/ad/liuzhishan/rs/test/test_hdfs.txt");
+
+    let content = "test";
+
+    {
+        let meta = fs.metadata(path.as_str());
+
+        info!(
+            "path: {}, is_exists: {}",
+            path.clone(),
+            !meta.is_err(),
+        );
+    }
+
+    {
+        // Write file
+        info!("test file write");
+        let mut f = fs.open_file().create(true).write(true).open(&path)?;
+
+        for i in 0..5 {
+            let s = format!("{} {}\n", content.clone(), i);
+            f.write_all(s.as_bytes())?;
+        }
+
+        // Flush file
+        info!("test file flush");
+        f.flush()?;
+    }
+
+    {
+        // Read file
+        info!("test file read");
+        let mut f = fs.open_file().read(true).open(&path)?;
+
+        let mut reader = BufReader::new(f);
+
+        let mut s = String::new();
+
+        for line in reader.lines() {
+            match line {
+                Ok(x) => {
+                    info!("read line: {}", x);
+                }
+                Err(err) => {
+                    info!("read line error, err: {}", err);
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

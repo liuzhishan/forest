@@ -8,7 +8,7 @@
 //! - `hub_server`: Main logic of hub, starting all task nodes.
 //! - `grpc handler`: Grpc handler for processing data.
 
-mod tool;
+pub mod tool;
 
 mod sample;
 
