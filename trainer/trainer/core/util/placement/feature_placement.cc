@@ -19,7 +19,10 @@ const std::vector<std::string>& FeaturePlacement::GetEmbPlacement(const std::str
 }
 
 std::string FeaturePlacement::GetDensePlacement(const std::string& var_name) {
-  return ps_eps_[std::hash<std::string>{}(var_name) % ps_eps_.size()];
+  uint64_t hash = simple_string_to_int_hash(var_name);
+
+  LOG(INFO) << "[FeaturePlacement.GetDensePlacement] var_name: {}, hash: " << hash;
+  return ps_eps_[hash % ps_eps_.size()];
 }
 
 void FeaturePlacement::UpdateSparsePlacement(const std::vector<std::vector<size_t>>& new_ps_shard) {

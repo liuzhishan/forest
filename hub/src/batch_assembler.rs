@@ -1,7 +1,8 @@
 use anyhow::{anyhow, bail, Result};
 use log::{error, info};
 
-use tokio::time::{sleep, Duration};
+use tokio::sync::mpsc;
+use tokio::time::sleep;
 
 use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
 
@@ -10,10 +11,13 @@ use prost::Message;
 use base64::Engine;
 use base64::{engine::general_purpose::STANDARD, read::DecoderReader};
 
+use coarsetime::{Duration, Instant, Updater};
+
 use grpc::sniper::SimpleFeatures;
 use util::error_bail;
 
 use super::sample::SampleBatch;
+use util::histogram::{record_time, Histogram, HistogramType};
 
 /// Assembly the data into batch.
 ///
@@ -49,6 +53,9 @@ pub struct BatchAssembler {
 
     /// Total batch.
     total_batch: i64,
+
+    /// Histogram statistics.
+    histogram: Histogram,
 }
 
 impl BatchAssembler {
@@ -59,6 +66,7 @@ impl BatchAssembler {
         dense_total_size: usize,
         line_receiver: async_channel::Receiver<String>,
         batch_sender: async_channel::Sender<SampleBatch>,
+        histogram: Histogram,
     ) -> Self {
         let sample_batch = SampleBatch::new(
             batch_size,
@@ -78,6 +86,7 @@ impl BatchAssembler {
             batch_sender,
             total_line: 0,
             total_batch: 0,
+            histogram,
         }
     }
 
@@ -123,7 +132,7 @@ impl BatchAssembler {
                         // outside the pipeline.
                         //
                         // Need to find another more elegant way later.
-                        sleep(Duration::from_secs(2)).await;
+                        sleep(tokio::time::Duration::from_secs(2)).await;
                     } else {
                         let line = line_res.unwrap();
 
@@ -136,12 +145,20 @@ impl BatchAssembler {
                             }
                         };
 
+                        let mut last_time = Instant::now();
+
                         let features = match SimpleFeatures::decode(s.as_slice()) {
                             Ok(x) => x,
                             Err(err) => {
                                 error_bail!("SimpleFeaturs parse proto failed! error: {}", err);
                             }
                         };
+
+                        record_time(
+                            &mut self.histogram,
+                            HistogramType::HubParseProto,
+                            &mut last_time,
+                        );
 
                         match self.assembly(&features) {
                             Ok(_) => {},
@@ -150,17 +167,16 @@ impl BatchAssembler {
                             }
                         }
 
-                        info!(
-                            "[BatchAssembler.run] after assembly feature, batch_index: {}, batch_size: {}, total_line: {}, total_batch: {}",
-                            self.batch_index,
-                            self.batch_size,
-                            self.total_line,
-                            self.total_batch,
+                        record_time(
+                            &mut self.histogram,
+                            HistogramType::HubBatchAssembler,
+                            &mut last_time,
                         );
 
                         // If batch_index >= batch_size, we have enough data to send.
                         // Then reset the batch.
                         let is_enough = self.batch_index >= self.batch_size;
+
                         if is_enough {
                             let new_batch = self.sample_batch;
                             match self.batch_sender.send(new_batch).await {

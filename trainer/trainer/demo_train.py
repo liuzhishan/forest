@@ -17,7 +17,7 @@ from trainer.trainer import Trainer
 from trainer.AUC import auc as auc_eval
 from trainer import hooks as train_hook
 from trainer.trainer_ops_wrapper import TrainerOps
-from trainer.sniper_config import SniperConf
+from trainer.sniper_config import SniperConf, convert_config
 from trainer import dist
 from trainer import util
 from trainer.util import logger, PsBalance, get_lines
@@ -36,7 +36,15 @@ class HashDnnModel(ModelBase):
 
         self._input_size = self._config.input_sparse_total_size + self._config.input_dense_total_size
 
-    def inference(self, dnn_input, labels, is_train, hooks):
+    def inference(
+        self,
+        dnn_input,
+        labels,
+        is_cpu_ps: bool,
+        is_train: bool,
+        hooks,
+        debug_info
+    ):
         input_size = self._input_size
         layer = dnn_input
 
@@ -109,11 +117,7 @@ class HashDnnModel(ModelBase):
                 hooks.append(
                     train_hook.SaveModelHook(
                         self, auc, train_loss, prob_mean, real_mean,
-                        self._config.ckp_save_nfs_path, self._config.var_2_btq,
-                        self._config.ckp_save_btq,
-                        self._config.ckp_save_btq_incr_step,
-                        self._config.ckp_save_btq_full_interval,
-                        self._config.ckp_save_nfs_full_interval))
+                        self._config.ckp_save_nfs_path, self._config.var_2_btq))
 
             else:
                 prob_mean = tf.reduce_mean(prob[:, 1], name="prob_mean")
@@ -182,12 +186,32 @@ def get_1k_path_list(begin_date_str, end_date_str):
     return path_list
 
 
+def get_hdfs_files(dirnames: list):
+    res = []
+
+    fs = pyarrow.HadoopFileSystem()
+    for dirname in dirnames:
+        for x in fs.ls(dirname):
+            if x.endswith("_SUCCESS"):
+                continue
+
+            res.append(x)
+
+    return res
+
+
 def get_local_train_files():
-    return "/home/ad/liuzhishan/test/test_v4/dsp_conv_simple_features_train.txt"
+    dirnames = ["viewfs:///home/model_strategy_e/users/liuzhishan/simple_features_conv/dsp_feature_nebula_v1/20240906/0000",
+                "viewfs:///home/model_strategy_e/users/liuzhishan/simple_features_conv/dsp_feature_nebula_v1/20240906/0100",
+                "viewfs:///home/model_strategy_e/users/liuzhishan/simple_features_conv/dsp_feature_nebula_v1/20240906/0200"]
+
+    return get_hdfs_files(dirnames)
 
 
 def get_local_test_files():
-    return "/home/ad/liuzhishan/test/test_v4/dsp_conv_simple_features_test.txt"
+    dirnames = ["viewfs:///home/model_strategy_e/users/liuzhishan/simple_features_conv/dsp_feature_nebula_v1/20240906/0300"]
+
+    return get_hdfs_files(dirnames)
 
 
 def train_and_validate(conf_file):
@@ -196,9 +220,10 @@ def train_and_validate(conf_file):
     dist.init()
     util.set_trainer_cpu_affinity()
 
+    new_conf_file = convert_config(conf_file)
     # --------------- step2 ---------------
     # load && check conf
-    sniper_conf = SniperConf(conf_file, dist.rank())
+    sniper_conf = SniperConf(new_conf_file)
 
     # build model && trainer
     trainer_ops = TrainerOps(sniper_conf)

@@ -17,7 +17,7 @@
 #include "trainer/core/rpc/grpc/grpc_client.h"
 #include "trainer/core/util/monitor/run_status.h"
 
-DEFINE_string(varname_delimiter, "!@#", "");
+// DEFINE_string(varname_delimiter, "!@#", "");
 
 namespace sniper {
 namespace ops {
@@ -306,7 +306,7 @@ void FeedQueue::consume(int thread_id) {
         auto& var_idx = ps_var_idx[ep];
         auto& var_size = ps_var_size[ep];
 
-        std::string ps_join_varname = absl::StrJoin(varnames, FLAGS_varname_delimiter);
+        std::string ps_join_varname = absl::StrJoin(varnames, ",");
 
         EmbeddingLookupOption option;
         option.set_batch_size(batch_size);

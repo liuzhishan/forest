@@ -59,7 +59,6 @@ class RpcHandle {
       wait_cond_.wait(lk, [this] { return status_ != kDefaultState; });
       ret = status_;
     }
-    LOG(INFO) << "RpcHandle wait: " << ret;
     return ret != kErrorState;
   }
 
@@ -71,7 +70,6 @@ class RpcHandle {
         errmsg_ = errmsg;
       }
     }
-    LOG(INFO) << "RpcHandle finish: " << ok;
     wait_cond_.notify_all();
   }
 

@@ -897,3 +897,11 @@ def run_command(cmd: [str]):
     logger.info("cmd: %s", ' '.join(cmd))
 
     os.system(' '.join(cmd))
+
+def string_to_int_hash(s: str):
+    hash_value = 0
+
+    for char in s:
+        hash_value = hash_value * 31 + ord(char)
+
+    return hash_value

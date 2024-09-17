@@ -25,8 +25,19 @@
 //! use `LRUCache` to store the parameters.
 //!
 use grpc::sniper::EmbeddingLookupOption;
+use likely_stable::{likely, unlikely};
 use log::{error, info};
+use std::collections::VecDeque;
 use std::hash::RandomState;
+use std::ops::Deref;
+use std::sync::Arc;
+use std::sync::Mutex;
+use util::histogram;
+use util::histogram::record_time;
+use util::histogram::Histogram;
+use util::histogram::WithHistogram;
+
+use coarsetime::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Result};
 use dashmap::iter::Iter;
@@ -42,6 +53,7 @@ use rand::RngCore;
 use dashmap::DashMap;
 use util::error_bail;
 use util::get_target_shard_by_sign;
+use util::histogram::HistogramType;
 
 /// Sparse Parameter for sparse signs.
 pub struct SparseParameter {
@@ -147,6 +159,9 @@ pub struct EmbeddingLookupResult {
 
     /// Time spend in milliseconds.
     pub time_spends: u64,
+
+    /// Total signs.
+    pub total_signs: usize,
 }
 
 /// Embedding parameters.
@@ -179,7 +194,11 @@ pub struct Embedding {
     feed_queue: DashMap<i32, DashMap<u64, BatchMessage>>,
 
     /// Max feed_queue size.
-    max_feed_queue_size: u64,
+    max_feed_queue_size: usize,
+
+    /// Lru for batch_id. When the size of inner of feed_queue exceed `max_feed_queue_size`, rm the
+    /// front batch_ids from feed_queue_lru.
+    feed_queue_lru: DashMap<i32, VecDeque<u64>>,
 
     /// Lookup queue.
     ///
@@ -188,13 +207,43 @@ pub struct Embedding {
     lookup_queue: DashMap<i32, DashMap<u64, BatchMessage>>,
 
     /// Max lookup queue.
-    max_lookup_queue_size: u64,
+    max_lookup_queue_size: usize,
+
+    /// Lru for batch_id. When the size of inner of lookup_queue exceed `max_lookup_queue_size`, rm the
+    /// front batch_ids from lookup_queue_lru.
+    lookup_queue_lru: DashMap<i32, VecDeque<u64>>,
 
     /// Max pull key count for each request. Fixed in new.
     max_pull_key_count: usize,
 
     /// Fields.
     pub fields: Vec<i32>,
+
+    /// Histogram statistics.
+    histogram: Arc<Mutex<Histogram>>,
+}
+
+impl WithHistogram for Embedding {
+    fn with_histogram(histogram: Histogram) -> Self {
+        Self {
+            varname: String::from(""),
+            embedding_size: 16,
+            shard_num: 1,
+            shard_index: 0,
+            capacity: 10000,
+            hash_size: 10000,
+            store: DashMap::new(),
+            feed_queue: DashMap::new(),
+            max_feed_queue_size: 1024,
+            feed_queue_lru: DashMap::new(),
+            lookup_queue: DashMap::new(),
+            max_lookup_queue_size: 1024,
+            lookup_queue_lru: DashMap::new(),
+            max_pull_key_count: 100000,
+            fields: Vec::new(),
+            histogram: Arc::new(Mutex::new(histogram)),
+        }
+    }
 }
 
 impl Embedding {
@@ -207,31 +256,44 @@ impl Embedding {
         fields: &Vec<i32>,
         capacity: u64,
         hash_size: usize,
-        max_feed_queue_size: u64,
-        max_lookup_queue_size: u64,
+        max_feed_queue_size: usize,
+        max_lookup_queue_size: usize,
+        histogram: Arc<Mutex<Histogram>>,
     ) -> Self {
         let feed_queue = DashMap::new();
         let lookup_queue = DashMap::new();
 
+        let feed_queue_lru = DashMap::new();
+        let lookup_queue_lru = DashMap::new();
+
         for field in fields {
             feed_queue.insert(field.clone(), DashMap::new());
             lookup_queue.insert(field.clone(), DashMap::new());
+
+            feed_queue_lru.insert(field.clone(), VecDeque::with_capacity(max_feed_queue_size));
+            lookup_queue_lru.insert(
+                field.clone(),
+                VecDeque::with_capacity(max_lookup_queue_size),
+            );
         }
 
         Self {
             varname: varname.clone(),
             embedding_size,
-            store: DashMap::new(),
             shard_num,
             shard_index,
             capacity,
             hash_size,
+            store: DashMap::new(),
             feed_queue,
             max_feed_queue_size,
+            feed_queue_lru,
             lookup_queue,
             max_lookup_queue_size,
+            lookup_queue_lru,
             max_pull_key_count: 100000,
             fields: fields.clone(),
+            histogram,
         }
     }
 
@@ -276,38 +338,70 @@ impl Embedding {
         self.push_feed_queue(field, batch_message)
     }
 
-    /// Put one BatchMessage to feed_queue, use field as the outer key, batch_id as the inner key.
-    fn push_feed_queue(&self, field: i32, batch_message: BatchMessage) -> Result<()> {
-        let mut inner_opt = self.feed_queue.get_mut(&field);
-        if inner_opt.is_none() {
-            error_bail!("cannot find inner feed queue, field: {}", field,);
-        }
+    /// Check queue size against `max_queue_size`. If exceeded, remove batch_id from lru.
+    ///
+    /// The `BatchMessage` is poped when pulled from the queue, so when we delete the batch_id
+    /// from lru, the batch_id maybe already delete from the queue.
+    fn push_to_lru(
+        &self,
+        field: i32,
+        batch_id: u64,
+        field_lru: &DashMap<i32, VecDeque<u64>>,
+        queue: &DashMap<u64, BatchMessage>,
+        max_size: usize,
+    ) -> Result<()> {
+        // Push batch_id to lru.
+        match field_lru.get_mut(&field) {
+            Some(mut lru) => {
+                lru.push_back(batch_id);
 
-        let mut inner = inner_opt.unwrap();
+                // If exceed the max_queue_size, need to delete some old batch, both batch_id and
+                // `BatchMessage`.
+                if lru.len() > max_size {
+                    let cnt = lru.len() - max_size;
 
-        let batch_id = batch_message.batch_id;
-        inner.insert(batch_id, batch_message);
+                    // Delete oldest batch_id and `BatchMessage`.
+                    for i in 0..cnt {
+                        match lru.pop_front() {
+                            Some(batch_id) => {
+                                // The batch_id maybe already deleted when pulling
+                                // from the queue.
+                                queue.remove(&batch_id);
+                            }
+                            None => {
+                                error!("no batch_id found from lru! field: {}", field);
+                            }
+                        }
+                    }
+                }
 
-        // If exceed the max_queue_size, need to delete some BatchMessage.
-        // Although in hashed model, this would not happen. So right now, just delete the first item
-        // for simplicity.
-        //
-        // TODO: It should be done by LRU cache for general case, will be fixed later.
-        if inner.len() as u64 > self.max_feed_queue_size {
-            let cnt = (inner.len() as u64 - self.max_feed_queue_size) as usize;
-
-            let keys = inner
-                .iter()
-                .map(|x| x.key().clone())
-                .take(cnt)
-                .collect::<Vec<_>>();
-
-            for key in keys.iter() {
-                inner.remove(&key);
+                Ok(())
+            }
+            None => {
+                error_bail!("cannot find feed_queue_lru, field: {}", field);
             }
         }
+    }
 
-        Ok(())
+    /// Put one BatchMessage to feed_queue, use field as the outer key, batch_id as the inner key.
+    fn push_feed_queue(&self, field: i32, batch_message: BatchMessage) -> Result<()> {
+        match self.feed_queue.get_mut(&field) {
+            Some(inner) => {
+                let batch_id = batch_message.batch_id;
+                inner.insert(batch_id, batch_message);
+
+                self.push_to_lru(
+                    field,
+                    batch_id,
+                    &self.feed_queue_lru,
+                    inner.value(),
+                    self.max_feed_queue_size,
+                )
+            }
+            None => {
+                error_bail!("cannot find inner feed queue, field: {}", field);
+            }
+        }
     }
 
     /// Get BatchMessage by field and batch_id
@@ -485,6 +579,8 @@ impl Embedding {
     ) -> Result<EmbeddingLookupResult> {
         let mut res = EmbeddingLookupResult::default();
 
+        let mut last = Instant::now();
+
         // Initialize with 0.0.
         res.values.resize(batch_size, Vec::new());
         for i in 0..res.values.len() {
@@ -496,7 +592,8 @@ impl Embedding {
             Some(x) => x,
             None => {
                 error_bail!(
-                    "cannot find batch_message, field: {}, batch_id: {}",
+                    "cannot find batch_message, varname: {}, field: {}, batch_id: {}",
+                    self.varname.clone(),
                     field,
                     batch_id,
                 );
@@ -511,12 +608,13 @@ impl Embedding {
         let item_indexes = &batch_message.item_indexes;
 
         let total = signs.len();
+        res.total_signs = total;
 
         // get embedding parameter by sign and sum.
         for i in 0..total {
             let item_index = item_indexes[i] as usize;
 
-            if item_index > res.values.len() {
+            if unlikely(item_index > res.values.len()) {
                 error_bail!(
                     "out of range, item_index: {}, res.values.len(): {}",
                     item_index,
@@ -541,6 +639,17 @@ impl Embedding {
 
         // After lookup, push batch_message to lookup_queue for grad parameter updating later.
         self.push_lookup_queue(field, batch_id, batch_message)?;
+
+        res.time_spends = (Instant::now() - last).as_micros();
+
+        {
+            let mut histogram = self.histogram.lock().unwrap();
+            record_time(
+                &mut histogram,
+                HistogramType::PsEmbeddingLookupOneVariable,
+                &mut last,
+            );
+        }
 
         Ok(res)
     }
@@ -659,21 +768,14 @@ impl Embedding {
                 // Move match_message into inner lookup queue.
                 inner.insert(batch_id, batch_message);
 
-                // Delete more batch_message when inner queue is full.
-                if inner.len() >= self.max_lookup_queue_size as usize {
-                    let cnt = inner.len() - self.max_lookup_queue_size as usize;
-
-                    let keys = inner
-                        .iter()
-                        .map(|x| x.key().clone())
-                        .take(cnt)
-                        .collect::<Vec<_>>();
-                    keys.iter().for_each(|x| {
-                        inner.remove(x);
-                    })
-                }
-
-                Ok(())
+                // Push batch_id to lru. If exceed max queue size, delete the oldest batch_id.
+                self.push_to_lru(
+                    field,
+                    batch_id,
+                    &self.lookup_queue_lru,
+                    inner.value(),
+                    self.max_lookup_queue_size,
+                )
             }
             None => {
                 error_bail!(

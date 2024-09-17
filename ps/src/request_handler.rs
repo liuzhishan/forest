@@ -2,17 +2,23 @@ use std::borrow::Borrow;
 use std::cmp::min;
 use std::iter::zip;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use anyhow::{anyhow, bail, Result};
 use grpc::sniper::heartbeat_option::{CheckStatus, StatusType};
 use hashbrown::HashMap;
 use log::{error, info};
 
+use util::histogram::{
+    self, record_time, Histogram, HistogramAggregator, HistogramDetail, HistogramType,
+};
+
 use prost_types::{field_options, Any};
+use tokio::sync::mpsc;
 use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
 use tonic::{transport::Server, Code, Request, Response, Status};
 use tonic_types::{ErrorDetails, StatusExt};
+
+use coarsetime::{Duration, Instant, Updater};
 
 use grpc::sniper::sniper_server::{Sniper, SniperServer};
 use grpc::sniper::{
@@ -32,13 +38,17 @@ use crate::checkpoint::restore_task::{
 };
 use crate::checkpoint::save_task::{SaveDenseToLocalTask, SaveSparseTask, SaveSparseToLocalTask};
 use crate::checkpoint::tool::CheckpointContext;
+use crate::dense::DenseVariable;
 use crate::embedding::{Embedding, EmbeddingLookupResult};
 use crate::env::Env;
 use crate::scheduler::Scheduler;
 use crate::variable_manager::{DenseManager, EmbeddingManager};
 
 use dashmap::DashMap;
+use dashmap::Map;
+use dashmap::SharedValue;
 use dashmap::{mapref::one::Ref, RawRwLock};
+use std::hash::{BuildHasher, Hash, Hasher};
 
 pub type RwLock<T> = lock_api::RwLock<RawRwLock, T>;
 
@@ -47,10 +57,10 @@ pub type RwLock<T> = lock_api::RwLock<RawRwLock, T>;
 /// Start ps for processing parameters.
 pub struct Ps {
     /// Sparse embedding manager, add, remove, or update embedding parameters.
-    embedding_manager: Arc<RwLock<EmbeddingManager>>,
+    embedding_manager: Arc<EmbeddingManager>,
 
     /// Dense parameter manager.
-    dense_manager: Arc<RwLock<DenseManager>>,
+    dense_manager: Arc<DenseManager>,
 
     /// Checkpoint manager.
     checkpoint_manager: Arc<RwLock<CheckpointManager>>,
@@ -60,15 +70,23 @@ pub struct Ps {
 
     /// Global Env for all request.
     env: Arc<RwLock<Env>>,
+
+    /// Histogram statistics.
+    histogram: Arc<Mutex<Histogram>>,
 }
 
 impl Ps {
     pub fn new() -> Self {
-        let embedding_manager = Arc::new(RwLock::new(EmbeddingManager::default()));
-        let dense_manager = Arc::new(RwLock::new(DenseManager::default()));
+        let (histogram_sender, histogram_receiver) = mpsc::channel::<HistogramDetail>(100);
+        let histogram = Histogram::new(histogram_sender.clone());
+
+        let embedding_manager = Arc::new(EmbeddingManager::new(histogram.clone()));
+        let dense_manager = Arc::new(DenseManager::new(histogram.clone()));
         let checkpoint_manager = Arc::new(RwLock::new(CheckpointManager::default()));
         let scheduler = Arc::new(RwLock::new(Scheduler::default()));
         let env = Arc::new(RwLock::new(Env::new()));
+
+        Self::start_histogram_aggregator(histogram_receiver);
 
         Self {
             embedding_manager,
@@ -76,7 +94,46 @@ impl Ps {
             checkpoint_manager,
             scheduler,
             env,
+            histogram: Arc::new(Mutex::new(histogram)),
         }
+    }
+
+    fn start_histogram_aggregator(histogram_receiver: mpsc::Receiver<HistogramDetail>) {
+        let histogram_aggregator = Self::get_histogram_aggregator(histogram_receiver);
+
+        tokio::spawn(async move {
+            Toplevel::new(|s| async move {
+                s.start(SubsystemBuilder::new("ps_histogram_aggregator", |a| {
+                    histogram_aggregator.run(a)
+                }));
+            })
+            .catch_signals()
+            .handle_shutdown_requests(std::time::Duration::from_millis(1000))
+            .await
+        });
+    }
+
+    fn get_histogram_aggregator(
+        histogram_receiver: mpsc::Receiver<HistogramDetail>,
+    ) -> HistogramAggregator {
+        let histogram_types = vec![
+            HistogramType::PsCreate,
+            HistogramType::PsFeedSample,
+            HistogramType::PsPull,
+            HistogramType::PsPush,
+            HistogramType::PsEmbeddingLookup,
+            HistogramType::PsEmbeddingLookupOneVariable,
+            HistogramType::PsEmbeddingLookupDispatch,
+            HistogramType::PsEmbeddingLookupWaiting,
+            HistogramType::PsPushGrad,
+            HistogramType::PsSave,
+            HistogramType::PsRestore,
+            HistogramType::PsComplete,
+            HistogramType::PsFeedCached,
+            HistogramType::PsLookupCached,
+        ];
+
+        HistogramAggregator::new(histogram_receiver, &histogram_types)
     }
 
     /// Create embedding variable by create_option.
@@ -87,7 +144,7 @@ impl Ps {
     ) -> Result<()> {
         // Delete embedding variable for auto sharding.
         if create_option.r#type == VariableType::VarEmbedding.into() && create_option.delete_var {
-            self.embedding_manager.write().remove(varname);
+            self.embedding_manager.remove(varname);
         }
 
         let env_read = self.env.read();
@@ -95,7 +152,7 @@ impl Ps {
         let max_feed_queue_size = env_read.max_feed_queue_size;
         let max_lookup_queue_size = env_read.max_lookup_queue_size;
 
-        self.embedding_manager.write().add_new_var(
+        let var = Embedding::new(
             varname,
             create_option.emb_size as usize,
             create_option.shard_num as usize,
@@ -105,9 +162,10 @@ impl Ps {
             create_option.hash_size as usize,
             max_feed_queue_size,
             max_lookup_queue_size,
+            self.histogram.clone(),
         );
 
-        Ok(())
+        self.embedding_manager.add_new_var(varname, var)
     }
 
     /// Create dense variable by create_option.
@@ -120,8 +178,8 @@ impl Ps {
                     .map(|x| x.clone() as usize)
                     .collect::<Vec<_>>();
 
-                self.dense_manager.write().add_new_var(varname, &dims);
-                Ok(())
+                let var = DenseVariable::new(varname, &dims, self.histogram.clone());
+                self.dense_manager.add_new_var(varname, var)
             }
             None => {
                 error_bail!(
@@ -144,11 +202,12 @@ impl Ps {
         let mut keys: Vec<u64> = Vec::new();
         let mut values: Vec<f32> = Vec::new();
 
-        let embedding_manager_read = self.embedding_manager.read();
-        let var_option = embedding_manager_read.get(varname);
+        let vars = self.embedding_manager.vars_arc();
 
-        match var_option {
-            Some(var) => {
+        match self.embedding_manager.get_index(varname) {
+            Some(index) => {
+                let var = vars.get_element_unchecked(index);
+
                 var.pull(
                     batch_id,
                     &pull_option,
@@ -188,9 +247,9 @@ impl Ps {
                 return Ok(response);
             }
             None => {
-                error_bail!("cannot find sparse var, varname: {}", varname.clone(),);
+                error_bail!("cannot find sparse var, varname: {}", varname.clone());
             }
-        };
+        }
     }
 
     /// Pull dense parameters.
@@ -203,11 +262,12 @@ impl Ps {
         let out_option = PullOption::default();
         let mut values: Vec<f32> = Vec::new();
 
-        let dense_manager_read = self.dense_manager.read();
-        let var_option = dense_manager_read.get(varname);
+        let vars = self.dense_manager.vars_arc();
 
-        match var_option {
-            Some(var) => {
+        match self.dense_manager.get_index(varname) {
+            Some(index) => {
+                let var = vars.get_element_unchecked(index);
+
                 var.pull(&mut values);
 
                 let res_options = match Any::from_msg(&out_option) {
@@ -240,7 +300,7 @@ impl Ps {
                 return Ok(response);
             }
             None => {
-                error_bail!("pull dense var failed, varname: {}", varname.clone(),);
+                error_bail!("pull dense var failed, varname: {}", varname.clone());
             }
         }
     }
@@ -253,6 +313,10 @@ impl Ps {
         lookup_option: &EmbeddingLookupOption,
     ) -> Result<Vec<EmbeddingLookupResult>> {
         let mut tasks = Vec::with_capacity(lookup_option.field_idx.len());
+
+        let mut last = Instant::now();
+
+        let mut last_dispatch = Instant::now();
 
         for i in 0..varnames.len() {
             if i >= lookup_option.field_idx.len() {
@@ -270,26 +334,39 @@ impl Ps {
 
             let field = lookup_option.field_idx[i];
 
-            let embedding_manager_clone = self.embedding_manager.clone();
+            let vars = self.embedding_manager.vars_arc();
 
-            tasks.push(tokio::spawn(async move {
-                let embedding_manager_read = embedding_manager_clone.read();
-                let var_option = embedding_manager_read.get(&new_varname);
-
-                match var_option {
-                    Some(var) => var.embedding_lookup(field, new_batch_id, batch_size),
-                    None => Err(anyhow!(format!(
-                        "cannot find embedding by varname: {}",
-                        new_varname.clone()
-                    ))),
+            match self.embedding_manager.get_index(&varnames[i]) {
+                Some(index) => {
+                    tasks.push(tokio::spawn(async move {
+                        let var = vars.get_element_unchecked(index);
+                        var.embedding_lookup(field, batch_id, batch_size)
+                    }));
                 }
-            }));
+                None => {
+                    error_bail!(
+                        "cannot find index in embedding_manager, varname: {}",
+                        varnames[i].clone()
+                    );
+                }
+            }
         }
+
+        {
+            let mut histogram = self.histogram.lock().unwrap();
+            record_time(
+                &mut histogram,
+                HistogramType::PsEmbeddingLookupDispatch,
+                &mut last_dispatch,
+            );
+        }
+
+        let mut last_waiting = Instant::now();
 
         let mut lookup_res: Vec<EmbeddingLookupResult> = Vec::with_capacity(varnames.len());
         let mut error_messages: Vec<String> = Vec::new();
 
-        for task in tasks {
+        for (i, task) in tasks.into_iter().enumerate() {
             match task.await {
                 Ok(task_res) => match task_res {
                     Ok(x) => {
@@ -303,6 +380,20 @@ impl Ps {
                     error_messages.push(err.to_string());
                 }
             }
+        }
+
+        {
+            let mut histogram = self.histogram.lock().unwrap();
+            record_time(
+                &mut histogram,
+                HistogramType::PsEmbeddingLookupWaiting,
+                &mut last_waiting,
+            );
+        }
+
+        {
+            let mut histogram = self.histogram.lock().unwrap();
+            record_time(&mut histogram, HistogramType::PsEmbeddingLookup, &mut last);
         }
 
         if error_messages.len() == 0 {
@@ -380,28 +471,29 @@ impl Ps {
 
             let grad_values = values[start_index..end_index].to_vec();
 
-            let embedding_manager_clone = self.embedding_manager.clone();
+            let (vars, index) = match self.embedding_manager.get_var(&varname) {
+                Some(x) => x,
+                None => {
+                    error_bail!(
+                        "cannot find index in embedding_manager, varname: {}",
+                        varname.clone()
+                    );
+                }
+            };
 
             tasks.push(tokio::spawn(async move {
-                let embedding_manager_write = embedding_manager_clone.write();
-                let var_option = embedding_manager_write.get(&varname);
+                let var = vars.get_element_unchecked(index);
 
-                match var_option {
-                    Some(var) => var.push_grad(
-                        grad_values.as_slice(),
-                        new_batch_id,
-                        field,
-                        learning_rate,
-                        eta,
-                        eps,
-                        decay,
-                        l2,
-                    ),
-                    None => Err(anyhow!(format!(
-                        "cannot find embedding by varname: {}",
-                        varname.clone()
-                    ))),
-                }
+                var.push_grad(
+                    grad_values.as_slice(),
+                    new_batch_id,
+                    field,
+                    learning_rate,
+                    eta,
+                    eps,
+                    decay,
+                    l2,
+                )
             }));
         }
 
@@ -447,166 +539,149 @@ impl Ps {
         // task is assigned a `inner_shard` and `inner_shard_total`. We use `sign % inner_shard_total == inner_shard`
         // to determine whether the sign should be handled by the task. Thus every sign is assigned to exactly only
         // one task,
-        let embedding_manager_read = self.embedding_manager.read();
-        let var_option = embedding_manager_read.get(varname);
+        let (vars, index) = match self.embedding_manager.get_var(varname) {
+            Some(x) => x,
+            None => {
+                error_bail!(
+                    "cannot find index in embedding_manager, varname: {}",
+                    varname.clone()
+                );
+            }
+        };
 
         let max_save_key_size_in_file = self.env.read().max_save_key_size_in_file;
 
-        match var_option {
-            Some(var) => {
-                let embedding = var.value();
+        let (shard_index, shard_num, embedding_size, total) = {
+            let var = vars.get_element_unchecked(index);
 
-                let total = embedding.store.len() as u64;
-                let bucket_number =
-                    self.get_bucket_number(total, max_save_key_size_in_file) as usize;
+            (
+                var.shard_index as i32,
+                var.shard_num as i32,
+                var.embedding_size,
+                var.store.len() as u64,
+            )
+        };
 
-                let mut context = CheckpointContext::default();
+        let bucket_number = self.get_bucket_number(total, max_save_key_size_in_file) as usize;
 
-                context.version = 1;
-                context.checkpoint_type = CheckPointType::CkpTypeFull.into();
+        let mut context = CheckpointContext::default();
 
-                // Only support hdfs and local now.
-                context.checkpoint_target = CheckPointTarget::CkpTargetNfs.into();
+        context.version = 1;
+        context.checkpoint_type = CheckPointType::CkpTypeFull.into();
 
-                context.path = save_option.nfs_path.clone();
-                context.model_name = self.env.read().model_name.clone();
-                context.varname = varname.clone();
-                context.variable_type = save_option.variable_type();
-                context.shard_index = embedding.shard_index as i32;
-                context.shard_num = embedding.shard_num as i32;
-                context.need_finished = true;
-                context.has_finished = false;
-                context.inner_shard_total = bucket_number;
-                context.max_record_iterate_count = 200_000;
-                context.variable_dim = embedding.embedding_size;
+        // Only support hdfs and local now.
+        context.checkpoint_target = CheckPointTarget::CkpTargetNfs.into();
 
-                // Optimizer parameter dim is same as embedding size for adagrad. Right now only adagrad is supported, so the
-                // value is fixed.
-                //
-                // TODO: More Optimizer support, optimizer_dim should be consistent with different optimizer.
-                context.optimizer_dim = embedding.embedding_size;
+        context.path = save_option.nfs_path.clone();
+        context.model_name = self.env.read().model_name.clone();
+        context.varname = varname.clone();
+        context.variable_type = save_option.variable_type();
+        context.shard_index = shard_index;
+        context.shard_num = shard_num;
+        context.need_finished = true;
+        context.has_finished = false;
+        context.inner_shard_total = bucket_number;
+        context.max_record_iterate_count = 200_000;
+        context.variable_dim = embedding_size;
 
-                for i in 0..bucket_number {
-                    let mut new_context = context.clone();
+        // Optimizer parameter dim is same as embedding size for adagrad. Right now only adagrad is supported, so the
+        // value is fixed.
+        //
+        // TODO: More Optimizer support, optimizer_dim should be consistent with different optimizer.
+        context.optimizer_dim = embedding_size;
 
-                    new_context.inner_shard = i as i32;
+        for i in 0..bucket_number {
+            let mut new_context = context.clone();
+            new_context.inner_shard = i as i32;
 
-                    let embedding_manager_clone = self.embedding_manager.clone();
+            let vars_clone = vars.clone();
 
-                    // Dispatch the save task.
-                    tokio::spawn(async move {
-                        let save_task = SaveSparseToLocalTask::new(&new_context);
+            // Dispatch the save task.
+            tokio::spawn(async move {
+                let save_task = SaveSparseToLocalTask::new(&new_context);
 
-                        let embedding_manager_read = embedding_manager_clone.read();
-                        let var_option = embedding_manager_read.get(&new_context.varname);
+                let var = vars_clone.get_element_unchecked(index);
 
-                        match var_option {
-                            Some(var) => match save_task.run(var.value()) {
-                                Ok(_) => {
-                                    info!(
-                                            "save one shard of embeding done, varname: {}, inner_shard: {}",
-                                            new_context.varname.clone(),
-                                            new_context.inner_shard,
-                                        );
+                match save_task.run(&var) {
+                    Ok(_) => {
+                        info!(
+                            "save one shard of embeding done, varname: {}, inner_shard: {}",
+                            new_context.varname.clone(),
+                            new_context.inner_shard,
+                        );
 
-                                    Ok(())
-                                }
-                                Err(err) => {
-                                    error_bail!(
-                                            "save embedding parameters failed! varname: {}, inner_shard: {}, err: {}",
-                                            new_context.varname.clone(),
-                                            new_context.inner_shard,
-                                            err,
-                                        );
-                                }
-                            },
-                            None => {
-                                error_bail!(
-                                    "cannot find var in embedding_manager when save, varname: {}",
-                                    new_context.varname.clone(),
-                                );
-                            }
-                        }
-                    });
+                        Ok(())
+                    }
+                    Err(err) => {
+                        error_bail!(
+                                "save embedding parameters failed! varname: {}, inner_shard: {}, err: {}",
+                                new_context.varname.clone(),
+                                new_context.inner_shard,
+                                err,
+                            );
+                    }
                 }
-
-                Ok(())
-            }
-            None => {
-                error_bail!(
-                    "cannot find var in embedding_manager, varname: {}",
-                    varname.clone(),
-                );
-            }
+            });
         }
+
+        Ok(())
     }
 
     /// Save dense variable parameters.
     async fn save_dense_variable(&self, varname: &String, save_option: &SaveOption) -> Result<()> {
-        let dense_manager_read = self.dense_manager.read();
-        let var_option = dense_manager_read.get(varname);
-
-        match var_option {
-            Some(var) => {
-                let dense = var.value();
-
-                let mut context = CheckpointContext::default();
-
-                context.version = 1;
-                context.checkpoint_type = CheckPointType::CkpTypeFull.into();
-
-                // Only support hdfs and local now.
-                context.checkpoint_target = CheckPointTarget::CkpTargetNfs.into();
-
-                context.path = save_option.nfs_path.clone();
-                context.model_name = self.env.read().model_name.clone();
-                context.varname = varname.clone();
-                context.variable_type = save_option.variable_type();
-                context.need_finished = true;
-                context.has_finished = false;
-                context.variable_dim = dense.values.len();
-
-                let dense_manager_clone = self.dense_manager.clone();
-
-                tokio::spawn(async move {
-                    let save_task = SaveDenseToLocalTask::new(&context);
-
-                    let dense_manager_read = dense_manager_clone.read();
-                    let var_option = dense_manager_read.get(&context.varname);
-
-                    match var_option {
-                        Some(var) => match save_task.run(var.value()) {
-                            Ok(_) => {
-                                info!(
-                                    "save dense to file success! varname: {}",
-                                    context.varname.clone()
-                                );
-
-                                Ok(())
-                            }
-                            Err(err) => {
-                                error_bail!(
-                                    "save dense to file failed! varname: {}",
-                                    context.varname.clone(),
-                                );
-                            }
-                        },
-                        None => {
-                            error_bail!(
-                                "cannot find var in dense_manager, varname: {}",
-                                context.varname.clone(),
-                            );
-                        }
-                    }
-                });
-            }
+        let (vars, index) = match self.dense_manager.get_var(varname) {
+            Some(x) => x,
             None => {
                 error_bail!(
-                    "cannot find var in dense_manager, varname: {}",
-                    varname.clone(),
+                    "cannot find index in embedding_manager, varname: {}",
+                    varname.clone()
                 );
             }
-        }
+        };
+
+        let variable_dim = {
+            let var = vars.get_element_unchecked(index);
+            var.values.len()
+        };
+
+        let mut context = CheckpointContext::default();
+
+        context.version = 1;
+        context.checkpoint_type = CheckPointType::CkpTypeFull.into();
+
+        // Only support hdfs and local now.
+        context.checkpoint_target = CheckPointTarget::CkpTargetNfs.into();
+
+        context.path = save_option.nfs_path.clone();
+        context.model_name = self.env.read().model_name.clone();
+        context.varname = varname.clone();
+        context.variable_type = save_option.variable_type();
+        context.need_finished = true;
+        context.has_finished = false;
+        context.variable_dim = variable_dim;
+
+        tokio::spawn(async move {
+            let save_task = SaveDenseToLocalTask::new(&context);
+
+            let var = vars.get_element_unchecked(index);
+
+            match save_task.run(&var) {
+                Ok(_) => {
+                    info!(
+                        "save dense to file success! varname: {}",
+                        context.varname.clone()
+                    );
+
+                    Ok(())
+                }
+                Err(err) => {
+                    error_bail!(
+                        "save dense to file failed! varname: {}",
+                        context.varname.clone(),
+                    );
+                }
+            }
+        });
 
         Ok(())
     }
@@ -630,74 +705,65 @@ impl Ps {
             );
         }
 
-        let embedding_manager_read = self.embedding_manager.read();
-        let var_option = embedding_manager_read.get(varname);
-
-        match var_option {
-            Some(var) => {
-                // Loop over paths, for each weight_path and adagrad_path, spawn a new restore task.
-                for (weight_path, adagrad_path) in zip(weight_paths, adagrad_paths) {
-                    let mut context = CheckpointContext::default();
-
-                    context.checkpoint_target = CheckPointTarget::CkpTargetNfs;
-                    context.model_name = self.env.read().model_name.clone();
-                    context.path = format!("{},{}", weight_path.clone(), adagrad_path.clone());
-                    context.varname = varname.clone();
-
-                    context.shard_index = var.value().shard_index as i32;
-                    context.shard_num = var.value().shard_num as i32;
-
-                    let embedding_manager_clone = self.embedding_manager.clone();
-
-                    tokio::spawn(async move {
-                        let embedding_manager_write = embedding_manager_clone.write();
-                        let embedding_var_option =
-                            embedding_manager_write.get_mut(&context.varname);
-
-                        match embedding_var_option {
-                            Some(embedding_var) => {
-                                let restore_task = RestoreSparseFromLocalTask::new(&context);
-
-                                match restore_task.run(embedding_var.value()) {
-                                    Ok(_) => {
-                                        info!(
-                                            "restore embedding success! varname: {}, shard_index: {}, filename: {}",
-                                            context.varname.clone(),
-                                            context.shard_index,
-                                            context.path.clone(),
-                                        );
-
-                                        Ok(())
-                                    }
-                                    Err(err) => {
-                                        error_bail!(
-                                            "restore embedding failed! varname: {}, shard_index: {}, filename: {}",
-                                            context.varname.clone(),
-                                            context.shard_index,
-                                            context.path.clone(),
-                                        );
-                                    }
-                                }
-                            }
-                            None => {
-                                error_bail!(
-                                    "cannot find var in embedding_manager, varname: {}",
-                                    context.varname.clone(),
-                                );
-                            }
-                        }
-                    });
-                }
-
-                Ok(())
-            }
+        let (vars, index) = match self.embedding_manager.get_var(varname) {
+            Some(x) => x,
             None => {
                 error_bail!(
-                    "cannot find var in embedding_manager, varname: {}",
-                    varname.clone(),
+                    "cannot find index in embedding_manager, varname: {}",
+                    varname.clone()
                 );
             }
+        };
+
+        let (shard_index, shard_num) = {
+            let var = vars.get_element_unchecked(index);
+
+            (var.shard_index as i32, var.shard_num as i32)
+        };
+
+        // Loop over paths, for each weight_path and adagrad_path, spawn a new restore task.
+        for (weight_path, adagrad_path) in zip(weight_paths, adagrad_paths) {
+            let mut context = CheckpointContext::default();
+
+            context.checkpoint_target = CheckPointTarget::CkpTargetNfs;
+            context.model_name = self.env.read().model_name.clone();
+            context.path = format!("{},{}", weight_path.clone(), adagrad_path.clone());
+            context.varname = varname.clone();
+
+            context.shard_index = shard_index;
+            context.shard_num = shard_num;
+
+            let vars_clone = vars.clone();
+
+            tokio::spawn(async move {
+                let var = vars_clone.get_element_unchecked(index);
+
+                let restore_task = RestoreSparseFromLocalTask::new(&context);
+
+                match restore_task.run(&var) {
+                    Ok(_) => {
+                        info!(
+                            "restore embedding success! varname: {}, shard_index: {}, filename: {}",
+                            context.varname.clone(),
+                            context.shard_index,
+                            context.path.clone(),
+                        );
+
+                        Ok(())
+                    }
+                    Err(err) => {
+                        error_bail!(
+                            "restore embedding failed! varname: {}, shard_index: {}, filename: {}",
+                            context.varname.clone(),
+                            context.shard_index,
+                            context.path.clone(),
+                        );
+                    }
+                }
+            });
         }
+
+        Ok(())
     }
 
     /// Restore dense embedding parameters from file.
@@ -729,38 +795,37 @@ impl Ps {
         context.path = weight_paths[0].clone();
         context.varname = varname.clone();
 
-        let dense_manager_clone = self.dense_manager.clone();
+        let (vars, index) = match self.dense_manager.get_var(varname) {
+            Some(x) => x,
+            None => {
+                error_bail!(
+                    "cannot find index in embedding_manager, varname: {}",
+                    varname.clone()
+                );
+            }
+        };
 
         tokio::spawn(async move {
             let restore_task = RestoreDenseFromLocalTask::new(&context);
 
-            let dense_manager_write = dense_manager_clone.write();
-            let dense_var_option = dense_manager_write.get_mut(&context.varname);
+            let mut var = vars.get_element_mut_unchecked(index);
 
-            match dense_var_option {
-                Some(mut dense_var) => match restore_task.run(&mut dense_var.value_mut()) {
-                    Ok(_) => {
-                        info!(
-                            "restore dense var success! varname: {}, path: {}",
-                            context.varname.clone(),
-                            context.path.clone(),
-                        );
-
-                        Ok(())
-                    }
-                    Err(err) => {
-                        error_bail!(
-                            "restore dense var failed! varname: {}, path: {}, err: {}",
-                            context.varname.clone(),
-                            context.path.clone(),
-                            err,
-                        );
-                    }
-                },
-                None => {
-                    error_bail!(
-                        "cannot find var in dense_manager, varname: {}",
+            match restore_task.run(&mut var) {
+                Ok(_) => {
+                    info!(
+                        "restore dense var success! varname: {}, path: {}",
                         context.varname.clone(),
+                        context.path.clone(),
+                    );
+
+                    Ok(())
+                }
+                Err(err) => {
+                    error_bail!(
+                        "restore dense var failed! varname: {}, path: {}, err: {}",
+                        context.varname.clone(),
+                        context.path.clone(),
+                        err,
                     );
                 }
             }
@@ -779,6 +844,8 @@ impl Sniper for Ps {
     ) -> Result<Response<VoidMessage>, Status> {
         let request_inner = request.into_inner();
         let varname = &request_inner.varname;
+
+        info!("create request: {:#?}", request_inner.clone());
 
         // Get create_option from request.options.
         let create_option: CreateOption =
@@ -883,37 +950,41 @@ impl Sniper for Ps {
         {
             Some(x) => x,
             None => {
-                return send_bad_request_error(
+                return send_bad_request_error::<VoidMessage>(
                     "options",
                     "cannot get feed_sample_option from request!",
                 );
             }
         };
 
-        match self.embedding_manager.read().get(&varname) {
-            Some(embedding) => {
-                let batch_size = feed_sample_option.batch_size;
-
-                let field_infos = &feed_sample_option.field_info;
-
-                for i in 0..field_infos.len() {
-                    match embedding.feed_sample(batch_id, &feed_sample_option, i) {
-                        Ok(_) => {}
-                        Err(err) => {
-                            return send_error_message::<VoidMessage>(format!(
-                                "feed sample failed! varname: {}, err: {}",
-                                varname.clone(),
-                                err,
-                            ));
-                        }
-                    }
-                }
-            }
+        let (vars, index) = match self.embedding_manager.get_var(&varname) {
+            Some(x) => x,
             None => {
-                return send_error_message(format!(
-                    "cannot find varname in embedding_manager, varname: {}",
-                    varname.clone()
-                ));
+                return send_bad_request_error::<VoidMessage>(
+                    "options",
+                    format!(
+                        "cannot find index in embedding_manager, varname: {}",
+                        varname.clone()
+                    ),
+                );
+            }
+        };
+
+        let batch_size = feed_sample_option.batch_size;
+        let field_infos = &feed_sample_option.field_info;
+
+        let var = vars.get_element_unchecked(index);
+
+        for i in 0..field_infos.len() {
+            match var.feed_sample(batch_id, &feed_sample_option, i) {
+                Ok(_) => {}
+                Err(err) => {
+                    return send_error_message::<VoidMessage>(format!(
+                        "feed sample failed! varname: {}, err: {}",
+                        varname.clone(),
+                        err,
+                    ));
+                }
             }
         }
 
@@ -958,40 +1029,48 @@ impl Sniper for Ps {
         };
 
         if push_option.variable_type == VariableType::VarEmbedding.into() {
-            match self.embedding_manager.write().get(&varname) {
-                Some(var) => match var.value().push(batch_id, &push_option, keys, values) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return send_error_message(format!(
-                            "push embedding var failed! varname: {}, err: {}",
-                            varname.clone(),
-                            err,
-                        ));
-                    }
-                },
+            let (vars, index) = match self.embedding_manager.get_var(&varname) {
+                Some(x) => x,
                 None => {
-                    return send_error_message(format!(
-                        "cannot find embedding variable, varname: {}",
+                    return send_error_message::<VoidMessage>(format!(
+                        "cannot find index in embedding_manager, varname: {}",
                         varname.clone()
+                    ));
+                }
+            };
+
+            let var = vars.get_element_unchecked(index);
+
+            match var.push(batch_id, &push_option, keys, values) {
+                Ok(_) => {}
+                Err(err) => {
+                    return send_error_message::<VoidMessage>(format!(
+                        "push embedding var failed! varname: {}, err: {}",
+                        varname.clone(),
+                        err,
                     ));
                 }
             }
         } else {
-            match self.dense_manager.write().get_mut(&varname) {
-                Some(mut var) => match var.push(values) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return send_error_message(format!(
-                            "push dense var failed! varname: {}, err: {}",
-                            varname.clone(),
-                            err,
-                        ));
-                    }
-                },
+            let (vars, index) = match self.dense_manager.get_var(&varname) {
+                Some(x) => x,
                 None => {
-                    return send_error_message(format!(
-                        "cannot find dense variable, varname: {}",
+                    return send_error_message::<VoidMessage>(format!(
+                        "cannot find index in embedding_manager, varname: {}",
                         varname.clone()
+                    ));
+                }
+            };
+
+            let mut var = vars.get_element_mut_unchecked(index);
+
+            match var.push(values) {
+                Ok(_) => {}
+                Err(err) => {
+                    return send_error_message::<VoidMessage>(format!(
+                        "push dense var failed! varname: {}, err: {}",
+                        varname.clone(),
+                        err,
                     ));
                 }
             }
@@ -1159,7 +1238,7 @@ impl Sniper for Ps {
             }
         }
 
-        let dim = vec![total as i64];
+        let dim = vec![batch_size as i64, dim_acc as i64];
         let tensor1 = TensorProto::with_vec(DataType::DtFloat.into(), &dim, &parameters);
 
         let response = TensorMessage {

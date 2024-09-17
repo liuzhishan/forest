@@ -44,10 +44,10 @@ pub struct Env {
     pub embedding_eps: f32,
 
     /// Max feed queue size for embedding variable. Default is 1024.
-    pub max_feed_queue_size: u64,
+    pub max_feed_queue_size: usize,
 
     /// Max lookup queue size for embedding variable. Default is 1024.
-    pub max_lookup_queue_size: u64,
+    pub max_lookup_queue_size: usize,
 
     /// Max save key size in one file. Default is 10_000_000.
     pub max_save_key_size_in_file: u64,

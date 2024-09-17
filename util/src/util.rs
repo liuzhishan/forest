@@ -1,6 +1,7 @@
 use env_logger;
 use log::{error, info};
 
+use std::hash::SipHasher;
 use std::thread;
 
 use anyhow::anyhow;
@@ -10,6 +11,8 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use tokio::signal::unix::{signal, SignalKind};
 
 use std::io::Write;
+
+pub const MESSAGE_LIMIT: usize = 20 * 1024 * 1024;
 
 /// Init log. Set log format.
 pub fn init_log() {
@@ -70,9 +73,18 @@ macro_rules! error_bail {
 
 #[inline]
 pub fn compute_hash<T: Hash>(t: &T) -> u64 {
-    let mut s = DefaultHasher::new();
+    let mut s = SipHasher::new();
     t.hash(&mut s);
     s.finish()
+}
+
+pub fn simple_string_to_int_hash(s: &str) -> u64 {
+    let mut hash = 0u64;
+    for byte in s.bytes() {
+        hash = hash.wrapping_mul(31).wrapping_add(byte as u64);
+    }
+
+    hash
 }
 
 /// Get shard index by sign and shard_num, using bit operation to determin the target shard index.

@@ -14,6 +14,16 @@
 
 namespace sniper {
 
+uint64_t simple_string_to_int_hash(const std::string& s) {
+    uint64_t hash = 0;
+
+    for (char c : s) {
+        hash = hash * 31 + static_cast<unsigned char>(c);
+    }
+
+    return hash;
+}
+
 class FeaturePlacement {
  public:
   FeaturePlacement(const std::vector<EmbeddingTable>& vars,

@@ -70,7 +70,7 @@ RpcHandlePtr GRPCClient::CreateAsync(const std::string& ep,
   const auto ch = GetChannel(ep);
   RpcHandlePtr h(new RpcHandle(ep, kCreateRPC, "Create"));
   VoidProcessor* c =
-      new VoidProcessor(ch, "/sniper.SniperService/Create", req,
+      new VoidProcessor(ch, "/sniper.Sniper/Create", req,
                         FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
   c->Prepare();
   c->StartCall();
@@ -91,7 +91,7 @@ RpcHandlePtr GRPCClient::FeedSampleAsync(
         EncodeTensorToByteBuffer(ROLE_HUB, role_id_, batch_id, varname, options,
                                  val1, val2, &req);
         VoidProcessor* c =
-            new VoidProcessor(ch, "/sniper.SniperService/FeedSample", req,
+            new VoidProcessor(ch, "/sniper.Sniper/FeedSample", req,
                               FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
         c->Prepare();
         c->StartCall();
@@ -112,7 +112,7 @@ RpcHandlePtr GRPCClient::PullAsync(const std::string& ep, uint64_t batch_id,
   EncodeTensorToByteBuffer(ROLE_TRAINER, role_id_, batch_id, varname, options,
                            val1, val2, &req);
   pool_.Run([ch, response, h, req, timeout_in_ms, this] {
-    MsgProcessor* c = new MsgProcessor(ch, "/sniper.SniperService/Pull", req,
+    MsgProcessor* c = new MsgProcessor(ch, "/sniper.Sniper/Pull", req,
                                        FLAGS_rpc_retry_times, h, timeout_in_ms,
                                        GetCq(), response);
     c->response_call_back_ = ProcMsgResponse;
@@ -135,7 +135,7 @@ RpcHandlePtr GRPCClient::PushAsync(const std::string& ep, uint64_t batch_id,
                            val1, val2, &req);
   pool_.Run([ch, h, req, timeout_in_ms, this] {
     VoidProcessor* c =
-        new VoidProcessor(ch, "/sniper.SniperService/Push", req,
+        new VoidProcessor(ch, "/sniper.Sniper/Push", req,
                           FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
     c->Prepare();
     c->StartCall();
@@ -155,7 +155,7 @@ RpcHandlePtr GRPCClient::EmbeddingLookupAsync(
                            val1, val2, &req);
   pool_.Run([ch, response, h, req, timeout_in_ms, this] {
     MsgProcessor* c = new MsgProcessor(
-        ch, "/sniper.SniperService/EmbeddingLookup", req, FLAGS_rpc_retry_times,
+        ch, "/sniper.Sniper/EmbeddingLookup", req, FLAGS_rpc_retry_times,
         h, timeout_in_ms, GetCq(), response);
     c->response_call_back_ = ProcMsgResponse;
     c->Prepare();
@@ -176,7 +176,7 @@ RpcHandlePtr GRPCClient::PushGradAsync(
         EncodeTensorToByteBuffer(ROLE_TRAINER, role_id_, batch_id, varname,
                                  options, val1, val2, &req);
         VoidProcessor* c =
-            new VoidProcessor(ch, "/sniper.SniperService/PushGrad", req,
+            new VoidProcessor(ch, "/sniper.Sniper/PushGrad", req,
                               FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
         c->Prepare();
         c->StartCall();
@@ -201,7 +201,7 @@ RpcHandlePtr GRPCClient::SaveAsync(const std::string& ep,
   RpcHandlePtr h(new RpcHandle(ep, kSaveRPC, "Save"));
   const auto ch = GetChannel(ep);
   VoidProcessor* c =
-      new VoidProcessor(ch, "/sniper.SniperService/Save", req,
+      new VoidProcessor(ch, "/sniper.Sniper/Save", req,
                         FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
   c->Prepare();
   c->StartCall();
@@ -225,7 +225,7 @@ RpcHandlePtr GRPCClient::RestoreAsync(
   RpcHandlePtr h(new RpcHandle(ep, kRestoreRPC, "Restore"));
   const auto ch = GetChannel(ep);
 
-  MsgProcessor* c = new MsgProcessor(ch, "/sniper.SniperService/Restore", req,
+  MsgProcessor* c = new MsgProcessor(ch, "/sniper.Sniper/Restore", req,
                                      FLAGS_rpc_retry_times, h, timeout_in_ms,
                                      GetCq(), response);
   c->response_call_back_ = ProcMsgResponse;
@@ -251,7 +251,7 @@ RpcHandlePtr GRPCClient::FreezeAsync(const std::string& ep,
   RpcHandlePtr h(new RpcHandle(ep, kFreezeRPC, "Freeze"));
   const auto ch = GetChannel(ep);
   VoidProcessor* c =
-      new VoidProcessor(ch, "/sniper.SniperService/Freeze", req,
+      new VoidProcessor(ch, "/sniper.Sniper/Freeze", req,
                         FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
   c->Prepare();
   c->StartCall();
@@ -272,7 +272,7 @@ RpcHandlePtr GRPCClient::CompleteAsync(const std::string& ep,
   RpcHandlePtr h(new RpcHandle(ep, kCompleteRPC, "Complete"));
   const auto ch = GetChannel(ep);
   VoidProcessor* c =
-      new VoidProcessor(ch, "/sniper.SniperService/Complete", req,
+      new VoidProcessor(ch, "/sniper.Sniper/Complete", req,
                         FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
   c->Prepare();
   c->StartCall();
@@ -295,7 +295,7 @@ RpcHandlePtr GRPCClient::StartSampleAsync(
   RpcHandlePtr h(new RpcHandle(ep, kStartSampleRPC, "StartSample"));
   const auto ch = GetChannel(ep);
   VoidProcessor* c =
-      new VoidProcessor(ch, "/sniper.SniperService/StartSample", req,
+      new VoidProcessor(ch, "/sniper.Sniper/StartSample", req,
                         FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
   c->Prepare();
   c->StartCall();
@@ -318,7 +318,7 @@ RpcHandlePtr GRPCClient::ReadSampleAsync(const std::string& ep,
   RpcHandlePtr h(new RpcHandle(ep, kReadSampleRPC, "ReadSample"));
 
   pool_.Run([ch, response, h, req, timeout_in_ms, this] {
-    MsgProcessor* c = new MsgProcessor(ch, "/sniper.SniperService/ReadSample",
+    MsgProcessor* c = new MsgProcessor(ch, "/sniper.Sniper/ReadSample",
                                        req, FLAGS_rpc_retry_times, h,
                                        timeout_in_ms, GetCq(), response);
     c->response_call_back_ = ProcMsgResponse;
@@ -344,7 +344,7 @@ RpcHandlePtr GRPCClient::UpdateHubShardAsync(
   RpcHandlePtr h(new RpcHandle(ep, kUpdateHubShardRPC, "UpdateHubShard"));
   const auto ch = GetChannel(ep);
   VoidProcessor* c =
-      new VoidProcessor(ch, "/sniper.SniperService/UpdateHubShard", req,
+      new VoidProcessor(ch, "/sniper.Sniper/UpdateHubShard", req,
                         FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
   c->Prepare();
   c->StartCall();
@@ -366,7 +366,7 @@ RpcHandlePtr GRPCClient::HeartbeatAsync(
 
   RpcHandlePtr h(new RpcHandle(ep, kHeartbeatRPC, "Heartbeat"));
   const auto ch = GetChannel(ep);
-  MsgProcessor* c = new MsgProcessor(ch, "/sniper.SniperService/Heartbeat", req,
+  MsgProcessor* c = new MsgProcessor(ch, "/sniper.Sniper/Heartbeat", req,
                                      FLAGS_rpc_retry_times, h, timeout_in_ms,
                                      GetCq(), response);
   c->response_call_back_ = ProcMsgResponse;
@@ -390,7 +390,7 @@ RpcHandlePtr GRPCClient::CountFeatureAsync(
 
   RpcHandlePtr h(new RpcHandle(ep, kCountFeatureRPC, "CountFeature"));
   const auto ch = GetChannel(ep);
-  MsgProcessor* c = new MsgProcessor(ch, "/sniper.SniperService/CountFeature", req,
+  MsgProcessor* c = new MsgProcessor(ch, "/sniper.Sniper/CountFeature", req,
                                      FLAGS_rpc_retry_times, h, timeout_in_ms,
                                      GetCq(), response);
   c->response_call_back_ = ProcMsgResponse;
@@ -416,7 +416,7 @@ RpcHandlePtr GRPCClient::SaveFeatureCountAsync(const std::string& ep,
 
   RpcHandlePtr h(new RpcHandle(ep, kSaveFeatureCountRPC, "SaveFeatureCount"));
   const auto ch = GetChannel(ep);
-  MsgProcessor* c = new MsgProcessor(ch, "/sniper.SniperService/SaveFeatureCount", req,
+  MsgProcessor* c = new MsgProcessor(ch, "/sniper.Sniper/SaveFeatureCount", req,
                                      FLAGS_rpc_retry_times, h, timeout_in_ms,
                                      GetCq(), response);
   c->response_call_back_ = ProcMsgResponse;
@@ -442,7 +442,7 @@ RpcHandlePtr GRPCClient::RestoreFeatureCountAsync(const std::string& ep,
 
   RpcHandlePtr h(new RpcHandle(ep, kRestoreFeatureCountRPC, "RestoreFeatureCount"));
   const auto ch = GetChannel(ep);
-  MsgProcessor* c = new MsgProcessor(ch, "/sniper.SniperService/RestoreFeatureCount", req,
+  MsgProcessor* c = new MsgProcessor(ch, "/sniper.Sniper/RestoreFeatureCount", req,
                                      FLAGS_rpc_retry_times, h, timeout_in_ms,
                                      GetCq(), response);
   c->response_call_back_ = ProcMsgResponse;

@@ -1,5 +1,6 @@
 load(
     "@protobuf_archive//:protobuf.bzl",
+    "@zlib//:zlib",
     "proto_gen",
     "py_proto_library",
     "cc_proto_library",

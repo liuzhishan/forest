@@ -4,7 +4,11 @@ use anyhow::{anyhow, bail, Result};
 use dashmap::DashMap;
 use grpc::sniper::PullOption;
 use log::{error, info};
-use util::error_bail;
+use std::sync::Arc;
+use std::sync::Mutex;
+use util::histogram;
+use util::histogram::WithHistogram;
+use util::{error_bail, histogram::Histogram};
 
 /// Store dense parameters.
 ///
@@ -21,11 +25,26 @@ pub struct DenseVariable {
 
     /// Vlues.
     pub values: Vec<f32>,
+
+    /// Histogram statistics.
+    histogram: Arc<Mutex<Histogram>>,
+}
+
+impl WithHistogram for DenseVariable {
+    fn with_histogram(histogram: Histogram) -> Self {
+        Self {
+            varname: String::from(""),
+            dims: Vec::new(),
+            total_size: 0,
+            values: Vec::new(),
+            histogram: Arc::new(Mutex::new(histogram)),
+        }
+    }
 }
 
 impl DenseVariable {
     /// Intialize all values to 0.0 in new.
-    pub fn new(varname: &String, dims: &Vec<usize>) -> Self {
+    pub fn new(varname: &String, dims: &Vec<usize>, histogram: Arc<Mutex<Histogram>>) -> Self {
         let total_size = dims.iter().fold(1, |acc, x| acc * x);
         let values: Vec<f32> = Vec::with_capacity(total_size);
 
@@ -34,6 +53,7 @@ impl DenseVariable {
             dims: dims.clone(),
             total_size,
             values,
+            histogram,
         }
     }
 

@@ -3,12 +3,16 @@ use grpc::sniper::{FeedFieldInfo, GpuPsFeature64, Role, StartSampleOption, Tenso
 use log::{error, info};
 
 use hashbrown::HashMap;
+use tokio::sync::mpsc;
 
 use prost::Message;
 use prost_types::Any;
 use ps::get_ps_client;
 use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
 use util::{error_bail, get_target_shard_by_sign, FeaturePlacement};
+
+use coarsetime::{Duration, Instant, Updater};
+use util::histogram::{record_time, Histogram, HistogramType};
 
 use super::sample::SampleBatch;
 use grpc::sniper::TensorProto;
@@ -41,6 +45,9 @@ pub struct FeedSample {
 
     /// All ps clients. The key is ps_endpoint.
     ps_clients: HashMap<String, SniperClient<tonic::transport::Channel>>,
+
+    /// Histogram statistics.
+    histogram: Histogram,
 }
 
 impl FeedSample {
@@ -50,6 +57,7 @@ impl FeedSample {
         feature_placement: FeaturePlacement,
         trainer_data_sender: async_channel::Sender<SampleBatch>,
         ps_endpoints: &Vec<String>,
+        histogram: Histogram,
     ) -> Self {
         Self {
             option,
@@ -59,6 +67,7 @@ impl FeedSample {
             trainer_data_sender,
             ps_endpoints: ps_endpoints.clone(),
             ps_clients: HashMap::new(),
+            histogram,
         }
     }
 
@@ -101,6 +110,8 @@ impl FeedSample {
         if self.option.feature_list.is_none() {
             error_bail!("option.feature_list is none!");
         }
+
+        let mut last_time = Instant::now();
 
         let feature_list = self.option.feature_list.as_ref().unwrap();
 
@@ -174,6 +185,7 @@ impl FeedSample {
         for (varname, inner) in sparse_features.iter() {
             for (ps_endpoint, feed_sample_option) in inner.iter() {
                 let new_varname = varname.clone();
+
                 let options = Any::from_msg(feed_sample_option)?;
 
                 let batch_id = sample_batch.batch_id;
@@ -190,7 +202,6 @@ impl FeedSample {
                 };
 
                 handles.push(tokio::spawn(async move {
-                    // TODO: use real seq_id,
                     let tensor_message = TensorMessage {
                         role: Role::Hub.into(),
                         role_id: Into::<i32>::into(Role::Hub) as u32,
@@ -216,6 +227,12 @@ impl FeedSample {
                 }
             }
         }
+
+        record_time(
+            &mut self.histogram,
+            HistogramType::HubFeedSample,
+            &mut last_time,
+        );
 
         Ok(())
     }
@@ -311,12 +328,7 @@ impl FeedSample {
                     match sample_batch_res {
                         Ok(sample_batch) => {
                             self.total_batch += 1;
-
-                            info!(
-                                "get one batch! total_batch: {}, batch_id: {}",
-                                self.total_batch,
-                                sample_batch.batch_id.clone(),
-                            );
+                            let batch_id = sample_batch.batch_id;
 
                             match self.send_to_ps(&sample_batch).await {
                                 Ok(_) => {},

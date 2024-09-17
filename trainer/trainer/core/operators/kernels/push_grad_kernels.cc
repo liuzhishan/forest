@@ -16,7 +16,7 @@
 #include "tensorflow/core/platform/logging.h"
 #include "trainer/core/base/semaphore.h"
 
-DEFINE_string(push_grad_varname_delimiter, "!@#", "");
+// DEFINE_string(push_grad_varname_delimiter, "!@#", "");
 DEFINE_bool(push_grad_bfloat16, false, "");
 
 namespace sniper {
@@ -292,8 +292,9 @@ class PushGradOp : public OpKernel {
                                       ps_grad.NumElements());
           ps_grad = bfloat16_ps_grad;
         }
-        std::string ps_join_varname =
-            absl::StrJoin(varnames, FLAGS_push_grad_varname_delimiter);
+        // std::string ps_join_varname =
+        //    absl::StrJoin(varnames, FLAGS_push_grad_varname_delimiter);
+        std::string ps_join_varname = absl::StrJoin(varnames, ",");
 
         auto hdl = rpc_client_->PushGradAsync(ep, batch_id, ps_join_varname,
                                               option, ps_grad, Tensor());

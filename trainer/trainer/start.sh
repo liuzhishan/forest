@@ -1,9 +1,14 @@
-#!/usr/bin/env sh
-set -e
+#!/bin/bash
 
-export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
+export HADOOP_USER_NAME=ad
+export JAVA_HOME=/home/hadoop/software/java
+export HADOOP_HDFS_HOME=/home/hadoop/software/hadoop
+export PATH=$PATH:$HADOOP_HDFS_HOME/bin:$HADOOP_HDFS_HOME/sbin
+export CLASSPATH=$($HADOOP_HDFS_HOME/bin/hadoop classpath --glob)
 
+workspace=$(dirname `pwd`)
+path=$(dirname $workspace)
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$JAVA_HOME/jre/lib/amd64/server:/usr/local/cuda-10.0/extras/CUPTI/lib64:./
+export PYTHONPATH=$workspace:$PYTHONPATH
 
-python demo_train.py train_and_validate
+horovodrun -np 1 -H localhost:0 python demo_train.py train_and_validate dsp_ctr_lzs_test_v5.json

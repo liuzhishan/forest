@@ -18,17 +18,17 @@ from tensorflow.python.profiler import model_analyzer
 from tensorflow.python.profiler import option_builder
 from horovod.tensorflow.mpi_ops import Average
 
-from .hooks as train_hook
 from .trainer_ops_wrapper import TrainerOps
 from .sniper_config import SniperConf
 
+from .dist import InitHooks
 from .dist import rank
 from .dist import PeriodAvgNetworkVaiablesHook
 
-from .util import logger, run_cmd, get_root_dir
+from .util import logger, run_command, get_root_dir
 from .util import get_tf_session_config
 
-from trainer.AdaGrad import AdaGrad
+from .hooks import SaveModelHook, ClickhouseHook, DatasetInitializerHook
 
 
 class Trainer(object):
@@ -45,7 +45,7 @@ class Trainer(object):
             use_xla = self._config.use_xla
         )
 
-        if self._config['trainer']['is_local']:
+        if self._config['is_local']:
             self.start_local_ps_hub()
 
         self._src_to_number = {
@@ -74,14 +74,15 @@ class Trainer(object):
         If ps and hub are already running, kill first, then start.
         """
         for p in psutil.process_iter():
-            if p.name.find('ps_') >= 0 or ps.name.find('hub_') >= 0:
+            if p.name().find('ps_') >= 0 or p.name().find('hub_') >= 0:
                 p.kill()
 
         pwd = os.getcwd()
         os.chdir(get_root_dir())
+        logger.info("pwd: %s, root: %s", pwd, get_root_dir())
 
-        run_cmd(["./ps_server", "> ps.log 2>&1", "&"])
-        run_cmd(["./hub_server", "> hub.log 2>&1", "&"])
+        run_command(["./ps_server", "> ps.log 2>&1", "&"])
+        run_command(["./hub_server", "> hub.log 2>&1", "&"])
 
         os.chdir(pwd)
 
@@ -215,7 +216,7 @@ class Trainer(object):
         if rank() == 0:
             push_dense_ops = self._model.push_dense_vars()
             for x in hooks:
-                if type(x) == train_hook.SaveModelHook:
+                if type(x) == SaveModelHook:
                     x.set_push_dense_ops(push_dense_ops)
             final_push_dense_op = tf.group(push_dense_ops)
             hooks.append(tf.train.FinalOpsHook([final_push_dense_op]))
@@ -259,13 +260,13 @@ class Trainer(object):
                           work_mode)
 
         # Must call dist.InitHooks() before training.
-        hooks = dist.InitHooks()
+        hooks = InitHooks()
 
         with tf.Graph().as_default():
             learning_rate = tf.placeholder(dtype=tf.float32)
 
             iter = self.prepare_input(1)
-            hooks.append(train_hook.DatasetInitializerHook(iter))
+            hooks.append(DatasetInitializerHook(iter))
 
             self.train_model_fn(iter, hooks, learning_rate)
             hooks.append(
@@ -333,7 +334,7 @@ class Trainer(object):
 
         with tf.Graph().as_default():
             iter = self.prepare_input(2)
-            hooks.append(train_hook.DatasetInitializerHook(iter))
+            hooks.append(DatasetInitializerHook(iter))
             self.eval_model_fn(iter, hooks)
 
             ckpt_dir = None
@@ -366,7 +367,7 @@ class Trainer(object):
                 )
 
     def kafka_train(self):
-        hooks = dist.InitHooks()
+        hooks = InitHooks()
 
         if self._model._config.is_online_warmup and self._model.restored_model_path == '':
             raise Exception('must provied warmup path for kafka train!')
@@ -384,7 +385,7 @@ class Trainer(object):
             learning_rate = tf.placeholder(dtype=tf.float32)
             input_iter = self.prepare_input(1)
 
-            hooks.append(train_hook.DatasetInitializerHook(input_iter))
+            hooks.append(DatasetInitializerHook(input_iter))
             self.train_model_fn(input_iter, hooks, learning_rate)
             hooks.append(
                 PeriodAvgNetworkVaiablesHook(
@@ -392,8 +393,8 @@ class Trainer(object):
 
             logger.info(hooks)
 
-            if len(list(filter(lambda x: type(x) == train_hook.ClickhouseHook, hooks))) == 0 or \
-               len(list(filter(lambda x: type(x) == train_hook.SaveModelHook, hooks))) == 0:
+            if len(list(filter(lambda x: type(x) == ClickhouseHook, hooks))) == 0 or \
+               len(list(filter(lambda x: type(x) == SaveModelHook, hooks))) == 0:
                 raise Exception(
                     'online train must add ClickhouseHook and SaveModelHook!')
 

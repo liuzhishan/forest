@@ -15,7 +15,6 @@ from collections import defaultdict
 from .trainer_ops_wrapper import TrainerOps
 from .sniper_config import SniperConf, parse_feature_config
 
-from .util import VarDecayHooks, PrintGateHook
 from .util import logger, get_tf_session_config
 from .util import get_dense_vars
 from .util import get_variable
@@ -24,8 +23,6 @@ from .util import get_restore_vars
 from .dist import rank
 
 from .AUC import auc as auc_eval
-
-from .AdaGrad import AdaGrad
 
 
 class ModelBase(ABC):

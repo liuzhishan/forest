@@ -12,6 +12,7 @@ use std::path::Path;
 use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
 
 use grpc::sniper::SimpleFeatures;
+use util::histogram::Histogram;
 
 /// Read data from local.
 pub struct LocalReader {
@@ -20,13 +21,21 @@ pub struct LocalReader {
 
     /// Send features to channel.
     line_sender: async_channel::Sender<String>,
+
+    /// Histogram statistics.
+    histogram: Histogram,
 }
 
 impl LocalReader {
-    pub fn new(filenames: &Vec<String>, line_sender: async_channel::Sender<String>) -> Self {
+    pub fn new(
+        filenames: &Vec<String>,
+        line_sender: async_channel::Sender<String>,
+        histogram: Histogram,
+    ) -> Self {
         Self {
             filenames: filenames.iter().cloned().collect(),
             line_sender,
+            histogram,
         }
     }
 

@@ -6,6 +6,8 @@ use grpc::sniper::Role;
 use grpc::sniper::SparseFieldInfo;
 use grpc::sniper::StartSampleOption;
 use grpc::sniper::TensorProto;
+use hub::tool::get_hub_default_client;
+use hub::tool::HUB_SERVER_PORT;
 use log::info;
 
 use clap::Parser;
@@ -13,8 +15,10 @@ use clap::Parser;
 use grpc::sniper::sniper_client::SniperClient;
 use grpc::sniper::HelloRequest;
 use grpc::sniper::TensorMessage;
+use local_ip_address::local_ip;
 
 use prost_types::Any;
+use ps::tool::PS_SERVER_PORT;
 use util::Flags;
 
 /// Test say_hello.
@@ -50,11 +54,13 @@ async fn test_start_sample(
         bail!("missing filename argument!");
     }
 
+    let my_local_ip = local_ip()?;
+
     // ps_endpoints
     // TODO: use real ps.
     start_sample_option
         .ps_eps
-        .push(String::from("http://[::1]:50062"));
+        .push(format!("{}:{}", my_local_ip, PS_SERVER_PORT));
 
     // HdfsSrc
     let mut hdfs_src = HdfsSrc::default();
@@ -138,7 +144,7 @@ async fn main() -> Result<()> {
 
     util::init_log();
 
-    let mut client = SniperClient::connect("http://[::1]:50052").await?;
+    let mut client = get_hub_default_client().await?;
 
     test_start_sample(&flags, &mut client).await?;
 

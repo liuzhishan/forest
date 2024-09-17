@@ -86,41 +86,41 @@ inline const char* GrpcMethodName(GrpcMethod id) {
   switch (id) {
     // ps
     case GrpcMethod::kCreate:
-      return "/sniper.SniperService/Create";
+      return "/sniper.Sniper/Create";
     case GrpcMethod::kFeedSample:
-      return "/sniper.SniperService/FeedSample";
+      return "/sniper.Sniper/FeedSample";
     case GrpcMethod::kPull:
-      return "/sniper.SniperService/Pull";
+      return "/sniper.Sniper/Pull";
     case GrpcMethod::kPush:
-      return "/sniper.SniperService/Push";
+      return "/sniper.Sniper/Push";
     case GrpcMethod::kEmbeddingLookup:
-      return "/sniper.SniperService/EmbeddingLookup";
+      return "/sniper.Sniper/EmbeddingLookup";
     case GrpcMethod::kPushGrad:
-      return "/sniper.SniperService/PushGrad";
+      return "/sniper.Sniper/PushGrad";
     case GrpcMethod::kSave:
-      return "/sniper.SniperService/Save";
+      return "/sniper.Sniper/Save";
     case GrpcMethod::kRestore:
-      return "/sniper.SniperService/Restore";
+      return "/sniper.Sniper/Restore";
     case GrpcMethod::kFreeze:
-      return "/sniper.SniperService/Freeze";
+      return "/sniper.Sniper/Freeze";
     case GrpcMethod::kComplete:
-      return "/sniper.SniperService/Complete";
+      return "/sniper.Sniper/Complete";
     case GrpcMethod::kCountFeature:
-      return "/sniper.SniperService/CountFeature";
+      return "/sniper.Sniper/CountFeature";
     case GrpcMethod::kSaveFeatureCount:
-      return "/sniper.SniperService/SaveFeatureCount";
+      return "/sniper.Sniper/SaveFeatureCount";
     case GrpcMethod::kRestoreFeatureCount:
-      return "/sniper.SniperService/RestoreFeatureCount";
+      return "/sniper.Sniper/RestoreFeatureCount";
     // hub
     case GrpcMethod::kStartSample:
-      return "/sniper.SniperService/StartSample";
+      return "/sniper.Sniper/StartSample";
     case GrpcMethod::kReadSample:
-      return "/sniper.SniperService/ReadSample";
+      return "/sniper.Sniper/ReadSample";
     case GrpcMethod::kUpdateHubShard:
-      return "/sniper.SniperService/UpdateHubShard";
+      return "/sniper.Sniper/UpdateHubShard";
     // scheduler
     case GrpcMethod::kHeartbeat:
-      return "/sniper.SniperService/Heartbeat";
+      return "/sniper.Sniper/Heartbeat";
     // Shouldn't be reached.
     case GrpcMethod::kUnknown:
       LOG(FATAL) << "invalid id: not found valid method name";

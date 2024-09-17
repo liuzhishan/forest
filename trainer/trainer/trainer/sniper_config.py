@@ -17,9 +17,11 @@ from tensorflow import dtypes
 import io
 from pyarrow import hdfs
 from collections import defaultdict
+import socket
+import siphash24
 
 from .util import check_dir, logger, get_root_dir, cmd_hadoop, cmd_calc_load
-from .util import PsBalance, master_rank, wrap_ips, FeatureInfo
+from .util import PsBalance, master_rank, wrap_ips, FeatureInfo, string_to_int_hash
 from .ps_shard import LockBalance
 
 from .dist import rank
@@ -37,8 +39,10 @@ _trainer_ops_so = _load_op()
 
 
 def get_base_conf():
+    logger.info("root: %s", get_root_dir())
+
     return json.load(
-        codecs.open(os.path.join(get_root_dir(), 'base_config.json')))
+        codecs.open(os.path.join(get_root_dir(), 'trainer/base_config.json')))
 
 
 @master_rank
@@ -410,7 +414,8 @@ def parse_feature_lines(feature_file_lines: list,
                 ps_shard[x] = {'load': 1.0, 'shard': [h]}
     else:
         for key in d['embedding_table']:
-            h = int(hashlib.sha1(key.encode('utf-8')).hexdigest(), 16) % len(ps)
+            # h = int(hashlib.sha1(key.encode('utf-8')).hexdigest(), 16) % len(ps)
+            h = string_to_int_hash(key) % len(ps)
             d['embedding_table'][key]['shard'] = [ps[h]]
             d['embedding_table'][key]['load'] = 0.0
 
@@ -493,9 +498,6 @@ def change_config(config):
                 config['user_name'], config['model_name'],
                 now.strftime('%Y%m%d'), now.strftime('%H_%M_%S'))
     else:
-        if os.getcwd().find('config_gpu_ps') < 0:
-            raise Exception('config must came from config_gpu_ps! but is %s' %
-                            (os.getcwd()))
 
         config['model_export_root_path'] = '/home/ad/model_offline'
         config['use_btq'] = False
@@ -602,6 +604,13 @@ def is_hash_embedding(embedding_table: dict) -> bool:
     return False
 
 
+def get_local_ip():
+    hostname = socket.gethostname()
+    ip_address = socket.gethostbyname(hostname)
+
+    return ip_address
+
+
 @master_rank
 def convert_config(filename: str, ps_shard: dict = {}) -> str:
     logger.info('filename: %s', os.path.join(os.getcwd(), filename))
@@ -632,11 +641,12 @@ def convert_config(filename: str, ps_shard: dict = {}) -> str:
 
     # If is local, set ps and hub to local host.
     if conf['trainer']['is_local']:
-        conf['clusterspec']['ps'] = wrap_ips('localhost', 5800)
-        conf['clusterspec']['hub'] = wrap_ips('localhost', 5900)
+        ip_address = get_local_ip()
+        conf['clusterspec']['ps'] = wrap_ips(ip_address, 34000)
+        conf['clusterspec']['hub'] = wrap_ips(ip_address, 35000)
     else:
-        conf['clusterspec']['ps'] = wrap_ips(os.environ.get('PS', ''), 5800)
-        conf['clusterspec']['hub'] = wrap_ips(os.environ.get('HUB', ''), 5900)
+        conf['clusterspec']['ps'] = wrap_ips(os.environ.get('PS', ''), 34000)
+        conf['clusterspec']['hub'] = wrap_ips(os.environ.get('HUB', ''), 35000)
 
     conf['trainer']['dirname'] = os.path.join('/share/ad/',
                                               conf['trainer']['user_name'],
@@ -750,6 +760,8 @@ class SniperConf(object):
 
         self.conf_file = conf_file
         self.trainer_id = rank()
+
+        logger.info("conf_file: %s", self.conf_file)
 
         self.conf = json.load(codecs.open(self.conf_file, 'r', 'utf-8'))
         self.conf.update(self.conf['trainer'])

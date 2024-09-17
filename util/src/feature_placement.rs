@@ -4,6 +4,8 @@ use hashbrown::HashMap;
 
 use grpc::sniper::EmbeddingTable;
 
+use crate::simple_string_to_int_hash;
+
 use super::compute_hash;
 
 /// Strategy to place var to different ps.
@@ -45,7 +47,7 @@ impl FeaturePlacement {
         let total_ps = ps_endpoints.len();
 
         for var in vars.iter() {
-            let h = compute_hash(&var.name);
+            let h = simple_string_to_int_hash(var.name.as_str());
             let index = (h % total_ps as u64) as usize;
 
             info!(

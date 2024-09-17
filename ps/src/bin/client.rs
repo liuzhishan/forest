@@ -1,6 +1,7 @@
 use anyhow::Result;
 use grpc::sniper::{sniper_client::SniperClient, TensorMessage};
 use log::{error, info};
+use ps::tool::get_ps_default_client;
 
 /// Test pull.
 async fn test_pull(client: &mut SniperClient<tonic::transport::Channel>) -> Result<()> {
@@ -18,7 +19,7 @@ async fn test_pull(client: &mut SniperClient<tonic::transport::Channel>) -> Resu
 async fn main() -> Result<()> {
     util::init_log();
 
-    let mut client = SniperClient::connect("http://[::1]:50062").await?;
+    let mut client = get_ps_default_client().await?;
 
     test_pull(&mut client).await?;
 

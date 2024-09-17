@@ -13,7 +13,16 @@ echo "cd to trainer_path: ${trainer_path}"
 
 ./configure.sh
 bazel clean --expunge
-bazel build trainer/core/operators:trainer_ops.so
+
+{
+    bazel build trainer/core/operators:trainer_ops.so
+} || {
+    dirname=`ls -htrl /root/.cache/bazel/_bazel_root/ | tail -1 | awk '{print $9}'`
+    echo "dirname: ${dirname}"
+    sed -i 's/@zlib/@zlib_archive/g' /root/.cache/bazel/_bazel_root/${dirname}/external/com_google_protobuf/BUILD
+
+    bazel build trainer/core/operators:trainer_ops.so
+}
 
 # --incompatible_no_support_tools_in_action_inputs=false
 # cp bazel-bin/core/operators/trainer_ops.so trainer

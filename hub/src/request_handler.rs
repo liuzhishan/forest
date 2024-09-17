@@ -2,8 +2,11 @@ use std::time::Duration;
 
 use anyhow::bail;
 use log::{error, info};
+use util::histogram::{Histogram, HistogramAggregator, HistogramDetail, HistogramType};
 
 use std::collections::HashMap as StdHashMap;
+
+use tokio::sync::mpsc;
 
 use prost_types::Any;
 use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
@@ -45,6 +48,29 @@ impl Hub {
             sample_batch_receiver: r,
         }
     }
+
+    fn get_histogram_aggregator(
+        histogram_receiver: mpsc::Receiver<HistogramDetail>,
+    ) -> HistogramAggregator {
+        let histogram_types = vec![
+            HistogramType::HubStartSample,
+            HistogramType::HubReadSample,
+            HistogramType::HubNext,
+            HistogramType::HubProcess,
+            HistogramType::HubFeedSample,
+            HistogramType::HubReadMessage,
+            HistogramType::HubCountMessage,
+            HistogramType::HubBatchAssembler,
+            HistogramType::HubCountAfterItemFilter,
+            HistogramType::HubCountAfterLabelExtractor,
+            HistogramType::HubCountSamplePos,
+            HistogramType::HubCountSampleNeg,
+            HistogramType::HubDecompress,
+            HistogramType::HubParseProto,
+        ];
+
+        HistogramAggregator::new(histogram_receiver, &histogram_types)
+    }
 }
 
 #[tonic::async_trait]
@@ -67,8 +93,6 @@ impl Sniper for Hub {
         &self,
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
-        info!("start sample start");
-
         let mut response = VoidMessage::default();
 
         let request_inner = request.into_inner();
@@ -84,24 +108,30 @@ impl Sniper for Hub {
             };
         start_sample_option.parallel = num_cpus::get() as i32;
 
+        let (histogram_sender, histogram_receiver) = mpsc::channel::<HistogramDetail>(100);
+
         let new_sender = self.sample_batch_sender.clone();
+        let histogram = Histogram::new(histogram_sender.clone());
+
+        let histogram_aggregator = Self::get_histogram_aggregator(histogram_receiver);
 
         // Start running.
         if start_sample_option.need_batch {
             // Need to rm unwrap. use other ways.
             let mut single_sample_pipeline =
-                SingleSamplePipeline::new(start_sample_option.clone(), new_sender);
+                SingleSamplePipeline::new(start_sample_option.clone(), new_sender, histogram);
 
             if !single_sample_pipeline.init().await {
                 error!("single_sample_pipeline init failed!");
             }
 
-            info!("before spawn pipeline!");
-
             tokio::spawn(async move {
                 Toplevel::new(|s| async move {
                     s.start(SubsystemBuilder::new("single_sample_pipeline", |a| {
                         single_sample_pipeline.run(a)
+                    }));
+                    s.start(SubsystemBuilder::new("hub_histogram_aggregator", |a| {
+                        histogram_aggregator.run(a)
                     }));
                 })
                 .catch_signals()
@@ -111,7 +141,7 @@ impl Sniper for Hub {
         } else {
             // Need to rm unwrap. use other ways.
             let mut group_sample_pipeline =
-                GroupSamplePipeline::new(start_sample_option.clone(), new_sender);
+                GroupSamplePipeline::new(start_sample_option.clone(), new_sender, histogram);
 
             if !group_sample_pipeline.init().await {
                 error!("group_sample_pipeline init failed!");
@@ -122,14 +152,15 @@ impl Sniper for Hub {
                     s.start(SubsystemBuilder::new("group_sample_pipeline", |a| {
                         group_sample_pipeline.run(a)
                     }));
+                    s.start(SubsystemBuilder::new("hub_histogram_aggregator", |a| {
+                        histogram_aggregator.run(a)
+                    }));
                 })
                 .catch_signals()
                 .handle_shutdown_requests(Duration::from_millis(1000))
                 .await
             });
         }
-
-        info!("start_sample handle done!");
 
         Ok(Response::new(response))
     }
@@ -174,13 +205,15 @@ impl Sniper for Hub {
 
         match self.sample_batch_receiver.recv().await {
             Ok(sample_batch) => {
+                let batch_id = sample_batch.batch_id;
+
                 read_sample_option.batch_id = sample_batch.batch_id;
 
                 // Save labels to tensor1 of TensorMessage.
-                let dim_single = vec![sample_batch.batch_size as i64];
+                let dim_label = vec![1 as i64, sample_batch.batch_size as i64];
                 let tensor1 = TensorProto::with_vec(
                     DataType::DtInt32.into(),
-                    &dim_single,
+                    &dim_label,
                     &sample_batch.labels,
                 );
 
@@ -202,6 +235,8 @@ impl Sniper for Hub {
                 response.role = Role::Hub.into();
                 response.role_id = Into::<i32>::into(Role::Hub) as u32;
                 response.seq_id = sample_batch.batch_id;
+
+                let options = Any::from_msg(&read_sample_option);
                 response.options = Some(options.unwrap());
 
                 response.tensor1 = Some(tensor1);

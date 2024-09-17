@@ -42,3 +42,10 @@ tracing = "0.1.37"
 hashbrown = "0.11.2"
 hdrs = "0.3.2"
 hdfs-sys = "0.3.0"
+local-ip-address = "0.6.2"
+sync-unsafe-cell = "0.1.1"
+coarsetime = "0.1"
+likely_stable = "0.1"
+socket2 = { version="0.4", features = ["all"]}
+tokio-stream = { version = "0.1", features = ["net"] }
+nix = "*"

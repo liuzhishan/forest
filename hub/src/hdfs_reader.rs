@@ -4,14 +4,18 @@ use anyhow::Error;
 use anyhow::Result;
 use log::{error, info};
 use prost::Message;
+use util::histogram::record_time;
 
 use std::io::{BufRead, BufReader, Read, Write};
 
+use coarsetime::{Duration, Instant, Updater};
 use hdrs::Client;
 use hdrs::ClientBuilder;
+use tokio::sync::mpsc;
 use tokio_graceful_shutdown::SubsystemHandle;
 
 use grpc::sniper::SimpleFeatures;
+use util::histogram::{Histogram, HistogramType};
 
 /// Read data from hdfs.
 pub struct HdfsReader {
@@ -20,13 +24,21 @@ pub struct HdfsReader {
 
     /// Send features to channel.
     line_sender: async_channel::Sender<String>,
+
+    /// Histogram statistics.
+    histogram: Histogram,
 }
 
 impl HdfsReader {
-    pub fn new(filenames: &Vec<String>, line_sender: async_channel::Sender<String>) -> Self {
+    pub fn new(
+        filenames: &Vec<String>,
+        line_sender: async_channel::Sender<String>,
+        histogram: Histogram,
+    ) -> Self {
         Self {
             filenames: filenames.iter().cloned().collect(),
             line_sender,
+            histogram,
         }
     }
 
@@ -41,11 +53,21 @@ impl HdfsReader {
         let fs = ClientBuilder::new(&"default").connect()?;
 
         for filename in self.filenames.iter() {
+            info!("open hdfs file: {}", filename.clone());
+
             let mut f = fs.open_file().read(true).open(filename)?;
             let mut reader = BufReader::new(f);
 
+            let mut last = Instant::now();
+
             for line_result in reader.lines() {
                 let line = line_result?;
+
+                record_time(
+                    &mut self.histogram,
+                    HistogramType::HubReadMessage,
+                    &mut last,
+                );
 
                 match self.line_sender.send(line).await {
                     Ok(_) => {}
