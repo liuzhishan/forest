@@ -9,8 +9,7 @@ use util::histogram::record_time;
 use std::io::{BufRead, BufReader, Read, Write};
 
 use coarsetime::{Duration, Instant, Updater};
-use hdrs::Client;
-use hdrs::ClientBuilder;
+use hdrs::{Client, ClientBuilder};
 use tokio::sync::mpsc;
 use tokio_graceful_shutdown::SubsystemHandle;
 
@@ -27,6 +26,9 @@ pub struct HdfsReader {
 
     /// Histogram statistics.
     histogram: Histogram,
+
+    /// Id in threads.
+    id: i32,
 }
 
 impl HdfsReader {
@@ -34,11 +36,13 @@ impl HdfsReader {
         filenames: &Vec<String>,
         line_sender: async_channel::Sender<String>,
         histogram: Histogram,
+        id: i32,
     ) -> Self {
         Self {
             filenames: filenames.iter().cloned().collect(),
             line_sender,
             histogram,
+            id,
         }
     }
 
@@ -53,7 +57,11 @@ impl HdfsReader {
         let fs = ClientBuilder::new(&"default").connect()?;
 
         for filename in self.filenames.iter() {
-            info!("open hdfs file: {}", filename.clone());
+            info!(
+                "open hdfs file, reader id: {}, filename: {}",
+                self.id,
+                filename.clone()
+            );
 
             let mut f = fs.open_file().read(true).open(filename)?;
             let mut reader = BufReader::new(f);
@@ -76,7 +84,15 @@ impl HdfsReader {
                     }
                 }
             }
+
+            info!(
+                "read hdfs done, reader id: {}, file: {}",
+                self.id,
+                filename.clone()
+            );
         }
+
+        info!("hdfs reader done successfully! reader id: {}", self.id);
 
         Ok(())
     }

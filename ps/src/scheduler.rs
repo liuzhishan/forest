@@ -1,13 +1,23 @@
 use anyhow::{anyhow, bail, Result};
 use dashmap::{DashMap, DashSet};
 use log::{error, info};
+use util::error_bail;
+use std::time::Duration;
 
 use std::{collections::VecDeque, sync::atomic::AtomicBool};
+use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
+use tokio_graceful_shutdown::SubsystemHandle;
 
-use grpc::sniper::{CheckPointTarget, CheckPointType, HeartbeatOption};
+use tokio::{select, sync::mpsc};
+
+use grpc::sniper::{
+    heartbeat_option::{CkpStatus, StatusType},
+    sniper_client::SniperClient,
+    CheckPointTarget, CheckPointType, HeartbeatOption, Role, TensorMessage,
+};
 use hashbrown::HashMap;
 
-use crate::request_handler::RwLock;
+use crate::{checkpoint::tool::CheckpointContext, get_ps_client, request_handler::RwLock};
 
 /// Checkpoint version info.
 #[derive(Default)]
@@ -128,10 +138,87 @@ impl FinishRecord {
     }
 }
 
+/// Send save state to scheduler ps.
+pub struct SaveStateNotifier {
+    /// Scheduler ps.
+    scheduler_ps: String,
+
+    /// Receiver of save state channel.
+    receiver: mpsc::Receiver<(CheckpointContext, bool)>,
+}
+
+impl SaveStateNotifier {
+    pub fn new(
+        scheduler_ps: &String,
+        receiver: mpsc::Receiver<(CheckpointContext, bool)>,
+    ) -> Self {
+        Self {
+            scheduler_ps: scheduler_ps.clone(),
+            receiver,
+        }
+    }
+
+    pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
+        let mut client = match get_ps_client(&self.scheduler_ps).await {
+            Ok(client) => {
+                client
+            }
+            Err(err) => {
+                error!("get ps client failed!");
+                return Err(err.into());
+            }
+        };
+
+        loop {
+            select! {
+                x = self.receiver.recv() => {
+                    match x {
+                        Some((checkpoint_context, is_success)) => {
+                            let mut option = HeartbeatOption::default();
+
+                            option.st_type = StatusType::TypeCkp.into();
+
+                            let mut ckp_st = CkpStatus::default();
+                            ckp_st.incr = checkpoint_context.checkpoint_type == CheckPointType::CkpTypeIncr;
+                            ckp_st.version = checkpoint_context.version;
+                            ckp_st.var_name = checkpoint_context.varname.clone();
+                            ckp_st.success = is_success;
+                            ckp_st.ckp_target = checkpoint_context.checkpoint_target.into();
+                            ckp_st.nfs_path = checkpoint_context.path.clone();
+                            ckp_st.shard_idx = checkpoint_context.shard_index;
+                            ckp_st.shard_num = checkpoint_context.shard_num;
+
+                            option.ckp_st.insert(ckp_st);
+
+                            let request =
+                                TensorMessage::with_option(Role::Ps, &checkpoint_context.varname, &mut option)?;
+
+                            client.heartbeat(request).await;
+                        },
+                        None => {
+                            error!("save state sender is closed!");
+                            return Err(anyhow!("save state sender is closed!"));
+                        }
+                    }
+                },
+                _ = subsys.on_shutdown_requested() => {
+                    info!("scheduler save state sender shutdown!");
+                    return Ok(());
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Default)]
 pub struct Scheduler {
-    /// Scheduper ps. There is only one scheculer_ps.
+    /// Scheduler ps. There is only one scheculer_ps.
     scheduler_ps: String,
+
+    /// Sender for save state.
+    pub save_state_sender: Option<mpsc::Sender<(CheckpointContext, bool)>>,
 
     /// Hub endpoints.
     hub_endpoints: Vec<String>,
@@ -175,6 +262,13 @@ impl Scheduler {
         ps_shard: &HashMap<String, Vec<String>>,
     ) -> bool {
         self.scheduler_ps = scheduler_ps.clone();
+
+        let (sender, receiver) = mpsc::channel(100);
+
+        self.save_state_sender.insert(sender);
+
+        Self::start_save_state_receiver(scheduler_ps.clone(), receiver);
+
         self.hub_endpoints = hub_endpoints.clone();
         self.ps_endpoints = ps_endpoints.clone();
         self.dense_vars = dense_vars.clone();
@@ -194,6 +288,45 @@ impl Scheduler {
         }
 
         true
+    }
+
+    /// Send save state to channel.
+    pub async fn send_save_task_state(
+        &self,
+        checkpoint_context: CheckpointContext,
+        is_success: bool,
+    ) -> Result<()> {
+        match self.save_state_sender.as_ref() {
+            Some(sender) => {
+                sender.send((checkpoint_context, is_success)).await?;
+                Ok(())
+            },
+            None => {
+                Err(anyhow!("no save state sender found!"))
+            }
+        }
+    }
+
+    /// Start a new thread to send save state to scheduler ps.
+    ///
+    /// Receive checkpoint context and success flag from the sender.
+    /// And assembly the `TensorMessage` request, then send to scheduler ps using `heartbeat` request.
+    fn start_save_state_receiver(
+        scheduler_ps: String,
+        receiver: mpsc::Receiver<(CheckpointContext, bool)>,
+    ) {
+        let notifier = SaveStateNotifier::new(&scheduler_ps, receiver);
+
+        tokio::spawn(async move {
+            Toplevel::new(|s| async move {
+                s.start(SubsystemBuilder::new("save_state_receiver", |a| {
+                    notifier.run(a)
+                }));
+            })
+            .catch_signals()
+            .handle_shutdown_requests(Duration::from_millis(1000))
+            .await
+        });
     }
 
     pub fn start(&mut self) {}

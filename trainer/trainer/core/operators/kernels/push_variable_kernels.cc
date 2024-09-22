@@ -3,6 +3,7 @@
 
 #include "glog/logging.h"
 
+#include "absl/strings/str_join.h"
 #include "trainer/core/operators/kernels/train_config.h"
 #include "trainer/core/proto/meta.pb.h"
 #include "trainer/core/rpc/grpc/grpc_client.h"
@@ -43,6 +44,14 @@ class PushVariableOp : public OpKernel {
     if ((VariableType)vartype_ == VAR_DENSE) {
       auto ep = train_config_->placement()->GetDensePlacement(varname_);
       PushOption option;
+      option.set_variable_type(VariableType::VAR_DENSE);
+
+      LOG(INFO) << "push dense variable, varname: " << varname_
+                << ", ep: " << ep
+                << ", tensor size: { "
+                << absl::StrJoin(var.shape().dim_sizes(), ", ")
+                << " }";
+
       auto h = rpc_client_->PushAsync(ep, 0, varname_, option, var, Tensor());
       if (!h->Wait()) {
         OP_REQUIRES(ctx, false,
@@ -50,7 +59,7 @@ class PushVariableOp : public OpKernel {
                                      "] at ps[" + h->ep() +
                                      "] fail, errmsg=" + h->errmsg()));
       }
-      LOG(INFO) << "push variable " << varname_ << " at ps " << h->ep() << " success";
+      LOG(INFO) << "push dense variable " << varname_ << " at ps " << h->ep() << " success";
     } else if ((VariableType)vartype_ == VAR_EMBEDDING) {
       auto shard_eps = train_config_->placement()->GetEmbPlacement(varname_);
       auto shard_num = shard_eps.size();
@@ -79,14 +88,27 @@ class PushVariableOp : public OpKernel {
           std::copy_n(var_opt_flat.data() + pos * emb_size, emb_size,
                       val_flat.data() + j * emb_size * 2 + emb_size);
         }
+
         std::vector<rpc::RpcHandlePtr> hdls;
+
         for (size_t shard = 0; shard < shard_num; ++shard) {
           auto ep = shard_eps[shard];
           PushOption option;
+          option.set_variable_type(VariableType::VAR_EMBEDDING);
+
+          LOG(INFO) << "push embedding variable, varname: " << varname_
+                    << ", shard: " << shard
+                    << ", shard_num: " << shard_num
+                    << ", ep: " << ep
+                    << ", key_tensor size: " << n
+                    << ", value tensor size: { " << n << ", " << 2 * emb_size << " }";
+
           auto h = rpc_client_->PushAsync(ep, 0, varname_, option, key_tensor,
                                           val_tensor);
+
           hdls.push_back(h);
         }
+
         for (size_t i = 0; i < hdls.size(); ++i) {
           auto& h = hdls[i];
           if (!h->Wait()) {
@@ -94,6 +116,10 @@ class PushVariableOp : public OpKernel {
                         errors::Internal("push variable[" + varname_ +
                                          "] at ps[" + h->ep() +
                                          "] fail, errmsg=" + h->errmsg()));
+          } else {
+            LOG(INFO) << "push embedding variable " << varname_
+                      << " at ps " << h->ep()
+                      << " success";
           }
         }
       }

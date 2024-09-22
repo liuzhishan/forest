@@ -10,6 +10,16 @@
 
 namespace sniper {
 
+uint64_t simple_string_to_int_hash(const std::string& s) {
+    uint64_t hash = 0;
+
+    for (char c : s) {
+        hash = hash * 31 + static_cast<unsigned char>(c);
+    }
+
+    return hash;
+}
+
 const std::vector<std::string>& FeaturePlacement::GetEmbPlacement(const std::string& var_name) {
   auto it = placement_.find(var_name);
   if (it != placement_.end()) {
@@ -21,7 +31,8 @@ const std::vector<std::string>& FeaturePlacement::GetEmbPlacement(const std::str
 std::string FeaturePlacement::GetDensePlacement(const std::string& var_name) {
   uint64_t hash = simple_string_to_int_hash(var_name);
 
-  LOG(INFO) << "[FeaturePlacement.GetDensePlacement] var_name: {}, hash: " << hash;
+  LOG(INFO) << "[FeaturePlacement.GetDensePlacement] var_name: " << var_name
+            << ", hash: " << hash;
   return ps_eps_[hash % ps_eps_.size()];
 }
 

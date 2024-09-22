@@ -11,7 +11,6 @@ pub fn start_ps() {
     info!("start ps!");
 }
 
-/// For test.
 pub async fn get_ps_default_client() -> Result<SniperClient<tonic::transport::Channel>> {
     let my_local_ip = local_ip()?;
 
@@ -23,8 +22,10 @@ pub async fn get_ps_default_client() -> Result<SniperClient<tonic::transport::Ch
     }
 }
 
-pub async fn get_ps_client(ps_endpoint: String) -> Result<SniperClient<tonic::transport::Channel>> {
-    match SniperClient::connect(format!("http://{}", ps_endpoint)).await {
+pub async fn get_ps_client(
+    ps_endpoint: &String,
+) -> Result<SniperClient<tonic::transport::Channel>> {
+    match SniperClient::connect(format!("http://{}", ps_endpoint.clone())).await {
         Ok(client) => Ok(client
             .max_decoding_message_size(MESSAGE_LIMIT)
             .max_encoding_message_size(MESSAGE_LIMIT)),

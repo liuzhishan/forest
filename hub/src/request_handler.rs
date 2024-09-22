@@ -1,10 +1,14 @@
+use std::borrow::BorrowMut;
 use std::time::Duration;
 
 use anyhow::bail;
 use log::{error, info};
+use std::cell::RefCell;
+use sync_unsafe_cell::SyncUnsafeCell;
 use util::histogram::{Histogram, HistogramAggregator, HistogramDetail, HistogramType};
 
 use std::collections::HashMap as StdHashMap;
+use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
@@ -20,7 +24,7 @@ use grpc::sniper::{
 };
 
 use grpc::sniper::{TensorProto, TensorShapeProto};
-use grpc::tool::{get_request_inner_options, send_bad_request_error};
+use grpc::tool::{get_request_inner_options, send_bad_request_error, send_error_message};
 
 use super::pipeline::GroupSamplePipeline;
 use super::pipeline::SingleSamplePipeline;
@@ -30,22 +34,31 @@ use super::sample::SampleBatch;
 /// Hub server.
 ///
 /// Start hub pipelien for processing input data, response to grpc requests from trainer.
-#[derive(Debug)]
 pub struct Hub {
-    /// Sender, pass to pipeline.
-    sample_batch_sender: async_channel::Sender<SampleBatch>,
-
     /// Receiver, for read sample.
-    sample_batch_receiver: async_channel::Receiver<SampleBatch>,
+    ///
+    /// Why use `Arc<SyncUnsafe<Option>>` and where is the sender ?
+    ///
+    /// The channel is closed only after all sender are dropped.
+    ///
+    /// If we make sender and receiver both members of `Hub`, we need to construct them
+    /// in `Hub::new`. The sender will be cloned to different thread. And because the `Hub`
+    /// is always `&self`, there will always be an extra `self.sender` exists. There are no
+    /// place to drop it, because drop the last sender would need `Hub` to be `&mut self`.
+    /// It's impossible in `tonic`.
+    ///
+    /// Because the receiver is not cloned, so we can construct the sender and receiver in
+    /// `self.start_sample`, and save the receiver to `self.sample_batch_receiver`. Then
+    /// all cloned senders are moved into the spawned task, the origin sender would be dropped
+    /// manually at the end of `self.start_sample` function. After spawned tasks finished, all
+    /// senders will be dropped, and the receiver would be closed normally.
+    sample_batch_receiver: Arc<SyncUnsafeCell<Option<async_channel::Receiver<SampleBatch>>>>,
 }
 
 impl Hub {
     pub fn new() -> Self {
-        let (s, r) = async_channel::bounded::<SampleBatch>(100);
-
         Self {
-            sample_batch_sender: s,
-            sample_batch_receiver: r,
+            sample_batch_receiver: Arc::new(SyncUnsafeCell::new(None)),
         }
     }
 
@@ -108,18 +121,22 @@ impl Sniper for Hub {
             };
         start_sample_option.parallel = num_cpus::get() as i32;
 
+        let (batch_sender, batch_receiver) = async_channel::bounded::<SampleBatch>(100);
+
+        unsafe {
+            (*self.sample_batch_receiver.get()).insert(batch_receiver);
+        }
+
         let (histogram_sender, histogram_receiver) = mpsc::channel::<HistogramDetail>(100);
 
-        let new_sender = self.sample_batch_sender.clone();
         let histogram = Histogram::new(histogram_sender.clone());
 
         let histogram_aggregator = Self::get_histogram_aggregator(histogram_receiver);
 
         // Start running.
         if start_sample_option.need_batch {
-            // Need to rm unwrap. use other ways.
             let mut single_sample_pipeline =
-                SingleSamplePipeline::new(start_sample_option.clone(), new_sender, histogram);
+                SingleSamplePipeline::new(start_sample_option.clone(), batch_sender, histogram);
 
             if !single_sample_pipeline.init().await {
                 error!("single_sample_pipeline init failed!");
@@ -141,7 +158,7 @@ impl Sniper for Hub {
         } else {
             // Need to rm unwrap. use other ways.
             let mut group_sample_pipeline =
-                GroupSamplePipeline::new(start_sample_option.clone(), new_sender, histogram);
+                GroupSamplePipeline::new(start_sample_option.clone(), batch_sender, histogram);
 
             if !group_sample_pipeline.init().await {
                 error!("group_sample_pipeline init failed!");
@@ -177,14 +194,25 @@ impl Sniper for Hub {
 
         let mut read_sample_option = ReadSampleOption::default();
 
-        // If receiver is empty, need to wait for next batch.
-        if self.sample_batch_receiver.is_empty() {
-            read_sample_option.need_wait = true;
-        }
+        {
+            let receiver = unsafe { &*self.sample_batch_receiver.get() };
 
-        // If receiver is closed, then hub task is done.
-        if self.sample_batch_receiver.is_closed() {
-            read_sample_option.over = true;
+            match receiver.as_ref() {
+                Some(receiver) => {
+                    // If receiver is empty, need to wait for next batch.
+                    if receiver.is_empty() {
+                        read_sample_option.need_wait = true;
+                    }
+
+                    // If receiver is closed, then hub task is done.
+                    if receiver.is_closed() {
+                        read_sample_option.over = true;
+                    }
+                }
+                None => {
+                    return send_error_message::<TensorMessage>("sample batch receiver is None!");
+                }
+            }
         }
 
         // options in TensorMessage.
@@ -203,51 +231,58 @@ impl Sniper for Hub {
             return Ok(Response::new(response));
         }
 
-        match self.sample_batch_receiver.recv().await {
-            Ok(sample_batch) => {
-                let batch_id = sample_batch.batch_id;
+        let mut receiver_mut = unsafe { &mut *self.sample_batch_receiver.get() };
 
-                read_sample_option.batch_id = sample_batch.batch_id;
+        match receiver_mut.as_mut() {
+            Some(receiver) => match receiver.recv().await {
+                Ok(sample_batch) => {
+                    let batch_id = sample_batch.batch_id;
 
-                // Save labels to tensor1 of TensorMessage.
-                let dim_label = vec![1 as i64, sample_batch.batch_size as i64];
-                let tensor1 = TensorProto::with_vec(
-                    DataType::DtInt32.into(),
-                    &dim_label,
-                    &sample_batch.labels,
-                );
+                    read_sample_option.batch_id = sample_batch.batch_id;
 
-                // Convert dense features to 1d vec first, and save to tensor2 of TensorMessage.
-                let dims = vec![
-                    sample_batch.batch_size as i64,
-                    sample_batch.dense_total_size as i64,
-                ];
+                    // Save labels to tensor1 of TensorMessage.
+                    let dim_label = vec![1 as i64, sample_batch.batch_size as i64];
+                    let tensor1 = TensorProto::with_vec(
+                        DataType::DtInt32.into(),
+                        &dim_label,
+                        &sample_batch.labels,
+                    );
 
-                let mut vec = Vec::with_capacity(sample_batch.dense_total_size);
-                for multi_dense in sample_batch.dense_features.iter() {
-                    for dense_features in multi_dense.iter() {
-                        vec.extend_from_slice(dense_features);
+                    // Convert dense features to 1d vec first, and save to tensor2 of TensorMessage.
+                    let dims = vec![
+                        sample_batch.batch_size as i64,
+                        sample_batch.dense_total_size as i64,
+                    ];
+
+                    let mut vec = Vec::with_capacity(sample_batch.dense_total_size);
+                    for multi_dense in sample_batch.dense_features.iter() {
+                        for dense_features in multi_dense.iter() {
+                            vec.extend_from_slice(dense_features);
+                        }
                     }
+
+                    let tensor2 = TensorProto::with_vec(DataType::DtFloat.into(), &dims, &vec);
+
+                    response.role = Role::Hub.into();
+                    response.role_id = Into::<i32>::into(Role::Hub) as u32;
+                    response.seq_id = sample_batch.batch_id;
+
+                    let options = Any::from_msg(&read_sample_option);
+                    response.options = Some(options.unwrap());
+
+                    response.tensor1 = Some(tensor1);
+                    response.tensor2 = Some(tensor2);
+
+                    Ok(Response::new(response))
                 }
-
-                let tensor2 = TensorProto::with_vec(DataType::DtFloat.into(), &dims, &vec);
-
-                response.role = Role::Hub.into();
-                response.role_id = Into::<i32>::into(Role::Hub) as u32;
-                response.seq_id = sample_batch.batch_id;
-
-                let options = Any::from_msg(&read_sample_option);
-                response.options = Some(options.unwrap());
-
-                response.tensor1 = Some(tensor1);
-                response.tensor2 = Some(tensor2);
-
-                Ok(Response::new(response))
+                Err(err) => send_bad_request_error::<TensorMessage>(
+                    "options",
+                    "from read_sample_option to options failed!",
+                ),
+            },
+            None => {
+                return send_error_message::<TensorMessage>("sample_batch_receiver is None!");
             }
-            Err(err) => send_bad_request_error::<TensorMessage>(
-                "options",
-                "from read_sample_option to options failed!",
-            ),
         }
     }
 
@@ -319,8 +354,8 @@ impl Sniper for Hub {
     async fn restore(
         &self,
         request: Request<TensorMessage>,
-    ) -> Result<Response<VoidMessage>, Status> {
-        Ok(Response::new(VoidMessage::default()))
+    ) -> Result<Response<TensorMessage>, Status> {
+        Ok(Response::new(TensorMessage::default()))
     }
 
     async fn complete(

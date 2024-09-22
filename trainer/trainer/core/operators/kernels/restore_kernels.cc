@@ -42,11 +42,17 @@ class RestoreOp : public OpKernel {
     auto start = std::chrono::steady_clock::now();
 
     std::vector<std::string> eps;
+    bool is_sparse = true;
+
     if (varname_.rfind("embedding_", 0) == 0) {
       eps = train_config_->placement()->GetEmbPlacement(varname_);
+
+      is_sparse = true;
     } else {
       auto ep = train_config_->placement()->GetDensePlacement(varname_);
       eps.push_back(ep);
+
+      is_sparse = false;
     }
 
     // TODO(dongxing) 重新计算 shard分配逻辑，实现动态改变
@@ -61,12 +67,23 @@ class RestoreOp : public OpKernel {
             " shard_nfs_adagrad_paths_size !=  shard_nfs_adagrad_paths_size"));
 
     auto ep = eps[shard_idx_];
+
     int32_t total_iteration = 180;
+
     bool restore_finish = false;
     bool restore_error = false;
+
     RestoreOption option;
+
+    if (is_sparse) {
+      option.set_variable_type(VariableType::VAR_EMBEDDING);
+    } else {
+      option.set_variable_type(VariableType::VAR_DENSE);
+    }
+
     option.set_shard_idx(shard_idx_);
     option.set_shard_num(shard_num_);
+
     for (size_t i = 0; i < shard_nfs_weight_paths_.size(); ++i) {
       option.add_nfs_weight_path(shard_nfs_weight_paths_[i]);
       option.add_nfs_adagrad_path(shard_nfs_adagrad_paths_[i]);

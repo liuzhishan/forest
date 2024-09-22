@@ -1,95 +1,87 @@
 //! File releated handler.
 
 use anyhow::{anyhow, bail, Result};
+use std::io::{BufRead, Lines};
 use std::{fs::File, io::Write};
 
 use log::{error, info};
 use std::io::BufReader;
+
+use hdrs::Client;
+use hdrs::ClientBuilder;
 
 use util::error_bail;
 
 /// Trait for read file.
 ///
 /// Maybe local file or hdfs file.
-pub trait FileReader: Sized {
+pub trait FileReader {
+    type Reader: BufRead;
+
     /// Open a file by filename.
-    fn new(filename: &String) -> Result<Self>;
-
-    /// Write content in buf, return the total bytes.
-    fn read_line(&mut self) -> Result<String>;
+    fn get_reader(filename: &String) -> Result<Self::Reader>;
 }
 
-pub struct LocalFileReader {
-    /// Filename to read.
-    filename: String,
-
-    /// Reader.
-    reader: BufReader<File>,
-}
+/// Local file reader.
+pub struct LocalFileReader {}
 
 impl FileReader for LocalFileReader {
-    fn new(filename: &String) -> Result<Self> {
+    type Reader = BufReader<File>;
+
+    fn get_reader(filename: &String) -> Result<BufReader<File>> {
         let file = File::open(&filename)?;
-        let reader = BufReader::new(file);
-
-        Ok(Self {
-            filename: filename.clone(),
-            reader,
-        })
+        Ok(BufReader::new(file))
     }
+}
 
-    fn read_line(&mut self) -> Result<String> {
-        Ok("".to_string())
+/// Hdfs file reader.
+pub struct HdfsFileReader {}
+
+impl FileReader for HdfsFileReader {
+    type Reader = BufReader<hdrs::File>;
+
+    fn get_reader(filename: &String) -> Result<BufReader<hdrs::File>> {
+        let fs = ClientBuilder::new(&"default").connect()?;
+        let file = fs.open_file().read(true).open(filename)?;
+
+        Ok(BufReader::new(file))
     }
 }
 
 /// Trait for write to file.
 ///
 /// Maybe local file or hdfs file.
-pub trait FileWriter: Sized {
+pub trait FileWriter {
+    type File: Write;
+
     /// Open a file by filename.
-    fn new(filename: &String) -> Result<Self>;
-
-    /// Write content in buf, return the total bytes.
-    fn write(&mut self, buf: &[u8]) -> Result<usize>;
-
-    /// Flush the content in buffer to target.
-    fn flush(&mut self) -> Result<()>;
+    fn get_writer(filename: &String) -> Result<Self::File>;
 }
 
 /// Write to local file.
-pub struct LocalFileWriter {
-    /// filename to write.
-    filename: String,
-
-    /// Writer.
-    writer: File,
-}
+pub struct LocalFileWriter {}
 
 impl FileWriter for LocalFileWriter {
-    fn new(filename: &String) -> Result<Self> {
+    type File = File;
+
+    fn get_writer(filename: &String) -> Result<Self::File> {
         match File::create(filename) {
-            Ok(writer) => Ok(Self {
-                filename: filename.clone(),
-                writer,
-            }),
+            Ok(writer) => Ok(writer),
             Err(err) => Err(err.into()),
         }
     }
+}
 
-    #[inline]
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        match self.writer.write(buf) {
-            Ok(x) => Ok(x),
-            Err(err) => Err(err.into()),
-        }
-    }
+/// Write to hdfs file.
+pub struct HdfsFileWriter {}
 
-    #[inline]
-    fn flush(&mut self) -> Result<()> {
-        match self.writer.flush() {
-            Ok(_) => Ok(()),
-            Err(err) => Err(err.into()),
-        }
+impl FileWriter for HdfsFileWriter {
+    type File = hdrs::File;
+
+    fn get_writer(filename: &String) -> Result<Self::File> {
+        let fs = ClientBuilder::new(&"default").connect()?;
+        let writer = fs.open_file().create(true).write(true).open(filename)?;
+
+        Ok(writer)
     }
 }

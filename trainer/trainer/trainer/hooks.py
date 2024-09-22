@@ -7,11 +7,6 @@ from tensorflow.python.client import timeline
 from datetime import datetime
 import os
 
-from infra.perflog import create_perf_context
-from kconf.client import KConf
-from kconf.exception import KConfError
-from infra.perflog import create_perf_context
-
 from .util import logger
 from . import util
 
@@ -384,30 +379,6 @@ class ClickhouseHook(tf.train.SessionRunHook):
 
         self._step = 0
         extra = 'online' if is_online else 'offline'
-        self._perf_auc = create_perf_context('klearn.train',
-                                             aim,
-                                             model_name,
-                                             'auc',
-                                             extra,
-                                             biz_def='ad')
-        self._perf_loss = create_perf_context('klearn.train',
-                                              aim,
-                                              model_name,
-                                              'loss',
-                                              extra,
-                                              biz_def='ad')
-        self._perf_prob = create_perf_context('klearn.train',
-                                              aim,
-                                              model_name,
-                                              'prob',
-                                              extra,
-                                              biz_def='ad')
-        self._perf_real = create_perf_context('klearn.train',
-                                              aim,
-                                              model_name,
-                                              'real',
-                                              extra,
-                                              biz_def='ad')
 
     def begin(self):
         self._step = 0
@@ -441,13 +412,8 @@ class ClickhouseHook(tf.train.SessionRunHook):
 
         if self._step % self._print_interval == 0:
             try:
-                self._perf_auc.logstash(micros=int(self._auc_value * 1000000))
-                self._perf_loss.logstash(micros=int(self._loss_value *
-                                                    1000000))
-                self._perf_prob.logstash(micros=int(self._prob_value *
-                                                    1000000))
-                self._perf_real.logstash(micros=int(self._real_value *
-                                                    1000000))
+                # send to metric monitor.
+                pass
             except Exception as e:
                 logger.info(e)
 

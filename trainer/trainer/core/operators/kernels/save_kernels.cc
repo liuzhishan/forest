@@ -41,11 +41,16 @@ class SaveOp : public OpKernel {
 
     auto emb_tables = train_config_->emb_tables();
     std::vector<std::string> eps;
+
+    bool is_sparse = true;
+
     if (emb_tables.find(varname_) != emb_tables.end()) {
       eps = train_config_->placement()->GetEmbPlacement(varname_);
+      is_sparse = true;
     } else {
       auto ep = train_config_->placement()->GetDensePlacement(varname_);
       eps.push_back(ep);
+      is_sparse = false;
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -62,6 +67,12 @@ class SaveOp : public OpKernel {
       option.set_queue(queue_);
       option.set_shard_idx(i);
       option.set_shard_num(eps.size());
+
+      if (is_sparse) {
+        option.set_variable_type(VariableType::VAR_EMBEDDING);
+      } else {
+        option.set_variable_type(VariableType::VAR_DENSE);
+      }
 
       auto h = rpc_client_->SaveAsync(ep, varname_, option);
       hdls.push_back(h);

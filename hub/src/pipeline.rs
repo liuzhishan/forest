@@ -108,19 +108,23 @@ impl SingleSamplePipeline {
         let (batch_sender, batch_receiver) =
             async_channel::bounded::<SampleBatch>(self.sample_batch_queue_size);
 
-        info!("SingleSamplePipeline after get channel");
-
         info!("SingleSamplePipeline after init");
 
         let filenames = self.get_filenames_from_option();
 
         // Create HdfsReader.
         let n = parallel / 2;
-        for i in 0..n {
-            let part_filenames = self.get_part_filenames(&filenames, i, parallel);
+        info!("filenames.len(): {}, n: {}", filenames.len(), n);
 
-            let mut hdfs_reader =
-                HdfsReader::new(&part_filenames, line_sender.clone(), self.histogram.clone());
+        for i in 0..n {
+            let part_filenames = self.get_part_filenames(&filenames, i, n);
+
+            let mut hdfs_reader = HdfsReader::new(
+                &part_filenames,
+                line_sender.clone(),
+                self.histogram.clone(),
+                i,
+            );
 
             if !hdfs_reader.init().await {
                 error_bail!(
@@ -133,8 +137,6 @@ impl SingleSamplePipeline {
             subsys.start(SubsystemBuilder::new(hdfs_reader_name, |a| {
                 hdfs_reader.run(a)
             }));
-
-            info!("SingleSamplePipeline after hdfs_reader init");
         }
 
         let m = parallel / 4;
@@ -172,8 +174,6 @@ impl SingleSamplePipeline {
                 batch_assembler.run(a)
             }));
 
-            info!("SingleSamplePipeline after batch assembler init");
-
             // Create FeedSample.
             info!(
                 "start sample, emb_tables: {}, ps_eps: {}",
@@ -207,12 +207,7 @@ impl SingleSamplePipeline {
                 feed_sample.run(a)
             }));
         }
-
         info!("SingleSamplePipeline start subsys done");
-
-        subsys.on_shutdown_requested().await;
-
-        info!("SingleSamplePipeline shutdown!");
 
         Ok(())
     }

@@ -120,6 +120,9 @@ impl BatchAssembler {
     /// Process the input features, and assmbly features to batch, then send to the
     /// batch_sender channel.
     pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
+        // For batch histogram time statistics.
+        let mut last_batch_time = Instant::now();
+
         loop {
             tokio::select! {
                 line_res = self.line_receiver.recv() => {
@@ -128,11 +131,11 @@ impl BatchAssembler {
                         // and closed too. Then all task is done, shutdonw signal is send, and the
                         // all pipeline is finished before FeedSample is over.
                         //
-                        // So the task will run forever, can only be closed by shutdown signal from
-                        // outside the pipeline.
-                        //
-                        // Need to find another more elegant way later.
-                        sleep(tokio::time::Duration::from_secs(2)).await;
+                        // Wait other tasks for 60 seconds.
+                        sleep(tokio::time::Duration::from_secs(60)).await;
+
+                        info!("BatchAssembler finish after line_receiver is closed!");
+                        return Ok(());
                     } else {
                         let line = line_res.unwrap();
 
@@ -167,17 +170,20 @@ impl BatchAssembler {
                             }
                         }
 
-                        record_time(
-                            &mut self.histogram,
-                            HistogramType::HubBatchAssembler,
-                            &mut last_time,
-                        );
+                        info!("batch_index: {}", self.batch_index);
 
                         // If batch_index >= batch_size, we have enough data to send.
                         // Then reset the batch.
                         let is_enough = self.batch_index >= self.batch_size;
 
                         if is_enough {
+                            record_time(
+                                &mut self.histogram,
+                                HistogramType::HubBatchAssembler,
+                                &mut last_batch_time,
+                            );
+
+                            info!("is enough, send batch");
                             let new_batch = self.sample_batch;
                             match self.batch_sender.send(new_batch).await {
                                 Ok(_) => {},
@@ -186,9 +192,9 @@ impl BatchAssembler {
                                 }
                             }
 
-                            info!("[BatchAssembler.run] after send batch");
-
                             self.total_batch += 1;
+
+                            info!("is enough, send batch done, total_batch: {}", self.total_batch);
 
                             // After each SampleBatch, must reset batch_index to 0, and sample_batch to new SampleBatch.
                             self.batch_index = 0;

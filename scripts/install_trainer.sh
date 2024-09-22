@@ -25,7 +25,7 @@ bazel clean --expunge
 }
 
 # --incompatible_no_support_tools_in_action_inputs=false
-# cp bazel-bin/core/operators/trainer_ops.so trainer
+cp bazel-bin/trainer/core/operators/trainer_ops.so trainer/trainer
 
 # cd trainer
 # for x in `ls python`; do

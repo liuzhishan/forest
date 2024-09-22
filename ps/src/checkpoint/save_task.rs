@@ -14,12 +14,12 @@ use crate::dense::DenseVariable;
 use crate::embedding::Embedding;
 use crate::env::Env;
 
-use super::file_handler::{FileWriter, LocalFileWriter};
+use super::file_handler::{FileWriter, HdfsFileWriter, LocalFileWriter};
 use super::tool::CheckpointContext;
 
 /// Encode message to base64, then save to one line in file.
 #[inline]
-pub fn append_proto_base64_to_file<M: prost::Message, W: FileWriter>(
+pub fn append_proto_base64_to_file<M: prost::Message, W: Write>(
     message: &M,
     writer: &mut W,
 ) -> Result<()> {
@@ -30,6 +30,7 @@ pub fn append_proto_base64_to_file<M: prost::Message, W: FileWriter>(
     let s = STANDARD.encode(&buf);
     let _ = writer.write(s.as_bytes())?;
     let _ = writer.write("\n".as_bytes())?;
+    let _ = writer.flush();
 
     Ok(())
 }
@@ -76,6 +77,12 @@ impl<W: FileWriter> SaveSparseTask<W> {
     /// of the sign and total to split all signs into bucket. Total is computed before dispatching task, by
     /// total sign count and `context.max_record_iterate_count`.
     pub fn run(&self, embedding: &Embedding) -> Result<()> {
+        info!(
+            "save task start, varname: {}, shard_index: {}",
+            self.context.varname.clone(),
+            self.context.shard_index
+        );
+
         if self.context.inner_shard_total == 0 {
             error_bail!(
                 "context.inner_shard_total is 0! varname: {}",
@@ -86,10 +93,14 @@ impl<W: FileWriter> SaveSparseTask<W> {
         let prefix = self.get_filename_prefix();
 
         let weight_filename = format!("{}.weight", prefix);
-        let mut weight_writer = W::new(&weight_filename)?;
+        info!("weight_filename: {}", weight_filename.clone());
+
+        let mut weight_writer = W::get_writer(&weight_filename)?;
 
         let adagrad_filename = format!("{}.adagrad", prefix);
-        let mut adagrad_writer = W::new(&adagrad_filename)?;
+        info!("adagrad_filename: {}", adagrad_filename.clone());
+
+        let mut adagrad_writer = W::get_writer(&adagrad_filename)?;
 
         /// Count total signs get.
         let mut total_count: i64 = 0;
@@ -212,7 +223,7 @@ impl<W: FileWriter> SaveDenseTask<W> {
         let total = dense.values.len();
 
         let final_filename = self.get_final_filename();
-        let mut writer = W::new(&final_filename)?;
+        let mut writer = W::get_writer(&final_filename)?;
 
         let mut dense_data = GpuPsDenseData::default();
 
@@ -246,3 +257,6 @@ impl<W: FileWriter> SaveDenseTask<W> {
 
 pub type SaveSparseToLocalTask = SaveSparseTask<LocalFileWriter>;
 pub type SaveDenseToLocalTask = SaveDenseTask<LocalFileWriter>;
+
+pub type SaveSparseToHdfsTask = SaveSparseTask<HdfsFileWriter>;
+pub type SaveDenseToHdfsTask = SaveDenseTask<HdfsFileWriter>;

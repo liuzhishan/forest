@@ -21,7 +21,7 @@ unsafe impl<T: Sized + Sync> Sync for ArcUnsafeVec<T> {}
 impl<T: Sized> Clone for ArcUnsafeVec<T> {
     fn clone(&self) -> Self {
         Self {
-            value: self.value.clone()
+            value: self.value.clone(),
         }
     }
 }
@@ -31,7 +31,7 @@ impl<T: Sized> ArcUnsafeVec<T> {
     #[inline]
     pub fn new() -> Self {
         Self {
-            value: Arc::new(SyncUnsafeCell::new(Vec::new()))
+            value: Arc::new(SyncUnsafeCell::new(Vec::new())),
         }
     }
 
@@ -39,14 +39,14 @@ impl<T: Sized> ArcUnsafeVec<T> {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            value: Arc::new(SyncUnsafeCell::new(Vec::with_capacity(capacity)))
+            value: Arc::new(SyncUnsafeCell::new(Vec::with_capacity(capacity))),
         }
     }
 
     /// Get an immutable reference of the inner `Vec`.
     #[inline]
     pub fn get_vec(&self) -> &Vec<SyncUnsafeCell<T>> {
-        unsafe { & *self.value.get() }
+        unsafe { &*self.value.get() }
     }
 
     /// Get a mutable reference of the inner `Vec`.
@@ -63,7 +63,7 @@ impl<T: Sized> ArcUnsafeVec<T> {
         let vec = self.get_vec();
 
         if index < vec.len() {
-            unsafe { Some(& *(self.get_vec()[index].get())) }
+            unsafe { Some(&*(self.get_vec()[index].get())) }
         } else {
             None
         }
@@ -88,7 +88,7 @@ impl<T: Sized> ArcUnsafeVec<T> {
     /// Uncheck index.
     #[inline]
     pub fn get_element_unchecked(&self, index: usize) -> &T {
-        unsafe { & *(self.get_vec()[index].get()) }
+        unsafe { &*(self.get_vec()[index].get()) }
     }
 
     /// Get mutable reference of inner element of `Vec` at index.

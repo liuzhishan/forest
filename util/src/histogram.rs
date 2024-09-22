@@ -399,8 +399,8 @@ impl HistogramDetail {
     /// The default result is 10000.
     fn get_frequency(histogram_type: &HistogramType) -> u64 {
         match histogram_type {
-            HistogramType::HubFeedSample => 1,
-            _ => 100,
+            HistogramType::HubFeedSample => 10000,
+            _ => 10000,
         }
     }
 
@@ -429,8 +429,11 @@ impl HistogramDetail {
 
         self.num += 1;
 
-        self.sum += v;
-        self.sum_squares += v * v;
+        // Maybe overflow, must use `wrapping_add`.
+        self.sum = self.sum.wrapping_add(v);
+
+        // Maybe overflow, must use `wrapping_add` and `wrapping_mul`.
+        self.sum_squares = self.sum_squares.wrapping_add(v.wrapping_mul(v));
 
         self.buckets.add(v);
     }
@@ -443,10 +446,12 @@ impl HistogramDetail {
         self.min = self.min.min(other.min);
         self.max = self.max.max(other.max);
 
-        self.num += other.num;
+        // Maybe overflow, must use `wrapping_add`.
+        self.num = self.num.wrapping_add(other.num);
 
-        self.sum += other.sum;
-        self.sum_squares += other.sum_squares;
+        // Maybe overflow, must use `wrapping_add`.
+        self.sum = self.sum.wrapping_add(other.sum);
+        self.sum_squares = self.sum_squares.wrapping_add(other.sum_squares);
 
         self.buckets.merge(&other.buckets);
     }
@@ -480,8 +485,11 @@ impl HistogramDetail {
         if self.num == 0 {
             0.0
         } else {
-            let x = self.sum_squares * self.num - self.sum * self.sum;
-            let variance = x as f64 / ((self.num * self.num) as f64);
+            let x = self
+                .sum_squares
+                .wrapping_mul(self.num)
+                .wrapping_sub(self.sum.wrapping_mul(self.sum));
+            let variance = x as f64 / ((self.num.wrapping_mul(self.num)) as f64);
 
             variance.sqrt()
         }
@@ -502,6 +510,8 @@ impl HistogramDetail {
         self.histogram_type.clone().into()
     }
 
+    /// Print the statistics.
+    #[inline]
     pub fn to_string(&self) -> String {
         format!(
             "{} statistics in microseconds, total: {}, p50: {}, p95: {}, p99: {}, max: {}",
@@ -567,6 +577,9 @@ impl Histogram {
 
         let sender = self.sender.clone();
         let detail = self.details[index].clone();
+
+        // Must clear the detail.
+        self.details[index].clear();
 
         tokio::spawn(async move {
             match sender.send(detail).await {

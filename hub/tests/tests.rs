@@ -16,6 +16,9 @@ use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle, Toplevel};
 
+use base64::Engine;
+use base64::{engine::general_purpose::STANDARD, read::DecoderReader};
+
 use hdrs::Client;
 use hdrs::ClientBuilder;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -128,6 +131,48 @@ fn test_hdfs() -> Result<()> {
                 Err(err) => {
                     info!("read line error, err: {}", err);
                     break;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Test hdfs base64 reader..
+#[test]
+fn test_hdfs_base64() -> Result<()> {
+    setup();
+
+    let fs = ClientBuilder::new("default").connect()?;
+
+    let path = format!(
+        "/home/ad/model_offline/dsp_ctr_lzs_test_v5/model_tf.202409211422/embedding_45.0_0.weight"
+    );
+
+    {
+        // read base64.
+        let f = fs.open_file().read(true).open(&path)?;
+        let mut reader = BufReader::new(f);
+
+        for x in reader.lines() {
+            match x {
+                Ok(line) => {
+                    let n = line.len();
+
+                    info!("read line, len: {}", n);
+
+                    let s = match STANDARD.decode(line) {
+                        Ok(x) => {
+                            info!("decode line success");
+                        }
+                        Err(err) => {
+                            error!("decode line base64 failed! error: {}", err);
+                        }
+                    };
+                }
+                Err(err) => {
+                    error!("read line error: {}", err);
                 }
             }
         }

@@ -8,6 +8,7 @@ use grpc::sniper::heartbeat_option::{CheckStatus, StatusType};
 use hashbrown::HashMap;
 use log::{error, info};
 
+use sync_unsafe_cell::SyncUnsafeCell;
 use util::histogram::{
     self, record_time, Histogram, HistogramAggregator, HistogramDetail, HistogramType,
 };
@@ -32,11 +33,15 @@ use grpc::sniper::{TensorProto, TensorShapeProto, VariableType};
 use grpc::tool::{get_request_inner_options, send_bad_request_error, send_error_message};
 use util::error_bail;
 
-use crate::checkpoint::checkpoint_manager::CheckpointManager;
+use crate::checkpoint::checkpoint_manager::{self, CheckpointManager};
 use crate::checkpoint::restore_task::{
-    RestoreDenseFromLocalTask, RestoreSparseFromLocalTask, RestoreSparseTask,
+    self, RestoreDenseFromHdfsTask, RestoreDenseFromLocalTask, RestoreSparseFromHdfsTask,
+    RestoreSparseFromLocalTask, RestoreSparseTask,
 };
-use crate::checkpoint::save_task::{SaveDenseToLocalTask, SaveSparseTask, SaveSparseToLocalTask};
+use crate::checkpoint::save_task::{
+    SaveDenseToHdfsTask, SaveDenseToLocalTask, SaveSparseTask, SaveSparseToHdfsTask,
+    SaveSparseToLocalTask,
+};
 use crate::checkpoint::tool::CheckpointContext;
 use crate::dense::DenseVariable;
 use crate::embedding::{Embedding, EmbeddingLookupResult};
@@ -78,15 +83,15 @@ pub struct Ps {
 impl Ps {
     pub fn new() -> Self {
         let (histogram_sender, histogram_receiver) = mpsc::channel::<HistogramDetail>(100);
+
         let histogram = Histogram::new(histogram_sender.clone());
+        Self::start_histogram_aggregator(histogram_receiver);
 
         let embedding_manager = Arc::new(EmbeddingManager::new(histogram.clone()));
         let dense_manager = Arc::new(DenseManager::new(histogram.clone()));
-        let checkpoint_manager = Arc::new(RwLock::new(CheckpointManager::default()));
+        let checkpoint_manager = Arc::new(RwLock::new(CheckpointManager::new()));
         let scheduler = Arc::new(RwLock::new(Scheduler::default()));
         let env = Arc::new(RwLock::new(Env::new()));
-
-        Self::start_histogram_aggregator(histogram_receiver);
 
         Self {
             embedding_manager,
@@ -228,7 +233,7 @@ impl Ps {
                 };
 
                 let tensor1_dim = vec![keys.len() as i64];
-                let tensor1 = TensorProto::with_vec(DataType::DtInt64.into(), &tensor1_dim, &keys);
+                let tensor1 = TensorProto::with_vec(DataType::DtUint64.into(), &tensor1_dim, &keys);
 
                 let tensor2_dim = vec![values.len() as i64];
                 let tensor2 =
@@ -281,11 +286,15 @@ impl Ps {
                     }
                 };
 
-                let tensor1_dim = vec![values.len() as i64];
+                let tensor1_dim = var
+                    .dims
+                    .iter()
+                    .map(|x| x.clone() as i64)
+                    .collect::<Vec<_>>();
                 let tensor1 =
                     TensorProto::with_vec(DataType::DtFloat.into(), &tensor1_dim, &values);
 
-                let tensor2 = TensorProto::default();
+                let tensor2 = TensorProto::empty();
 
                 let response = TensorMessage {
                     role: Role::Ps.into(),
@@ -300,7 +309,10 @@ impl Ps {
                 return Ok(response);
             }
             None => {
-                error_bail!("pull dense var failed, varname: {}", varname.clone());
+                error_bail!(
+                    "cannot find index while pull dense, varname: {}",
+                    varname.clone()
+                );
             }
         }
     }
@@ -400,6 +412,116 @@ impl Ps {
             Ok(lookup_res)
         } else {
             Err(anyhow!(error_messages.join(", ")))
+        }
+    }
+
+    /// Push parameters to sparse.
+    fn push_sparse(
+        &self,
+        varname: &String,
+        batch_id: u64,
+        push_option: &PushOption,
+        tensor1: Option<&TensorProto>,
+        tensor2: Option<&TensorProto>,
+    ) -> Result<()> {
+        let keys: &[u64] = match tensor1 {
+            Some(x) => x.as_slice::<u64>(),
+            None => {
+                return Err(anyhow!("tensor1 is None! varname: {}", varname.clone()));
+            }
+        };
+
+        let values: &[f32] = match tensor2 {
+            Some(x) => x.as_slice::<f32>(),
+            None => {
+                return Err(anyhow!("tensor2 is None! varname: {}", varname.clone()));
+            }
+        };
+
+        let (vars, index) = match self.embedding_manager.get_var(&varname) {
+            Some(x) => x,
+            None => {
+                return Err(anyhow!(
+                    "cannot find index in embedding_manager, varname: {}",
+                    varname.clone()
+                ));
+            }
+        };
+
+        let var = vars.get_element_unchecked(index);
+
+        // Only support `Adagrad` optimizer now, the parameter size is `2 * embedding_size`.
+        //
+        // If other optimizer is supported in the future, the check should consistent with the optimizer.
+        if values.len() != keys.len() * 2 * var.embedding_size {
+            return Err(anyhow!(
+                "sparse values.len() != keys.len() * 2!, varname: {}, values.len(): {}, keys.len(): {}",
+                varname.clone(),
+                values.len(),
+                keys.len()
+            ));
+        }
+
+        match var.push(batch_id, &push_option, keys, values) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                return Err(anyhow!(
+                    "push embedding var failed! varname: {}, err: {}",
+                    varname.clone(),
+                    err
+                ));
+            }
+        }
+    }
+
+    /// Push parameters to dense.
+    fn push_dense(
+        &self,
+        varname: &String,
+        batch_id: u64,
+        push_option: &PushOption,
+        tensor1: Option<&TensorProto>,
+        tensor2: Option<&TensorProto>,
+    ) -> Result<()> {
+        let (vars, index) = match self.dense_manager.get_var(&varname) {
+            Some(x) => x,
+            None => {
+                return Err(anyhow!(
+                    "cannot find index in embedding_manager, varname: {}",
+                    varname.clone()
+                ));
+            }
+        };
+
+        let mut var = vars.get_element_mut_unchecked(index);
+
+        let values: &[f32] = match tensor1 {
+            Some(x) => x.as_slice::<f32>(),
+            None => {
+                return Err(anyhow!(
+                    "dense var tensor2 is None! varname: {}",
+                    varname.clone()
+                ));
+            }
+        };
+
+        if var.total_size != values.len() {
+            return Err(anyhow!(
+                "dense var.total_size != values.len()!, varname: {}, values.len(): {}",
+                varname.clone(),
+                values.len()
+            ));
+        }
+
+        match var.push(values) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                return Err(anyhow!(
+                    "push dense var failed! varname: {}, err: {}",
+                    varname.clone(),
+                    err,
+                ));
+            }
         }
     }
 
@@ -590,17 +712,33 @@ impl Ps {
         // TODO: More Optimizer support, optimizer_dim should be consistent with different optimizer.
         context.optimizer_dim = embedding_size;
 
+        info!(
+            "[Ps.save_sparse_variable] varname: {}, bucket_number: {}",
+            varname.clone(),
+            bucket_number
+        );
+
         for i in 0..bucket_number {
             let mut new_context = context.clone();
             new_context.inner_shard = i as i32;
 
             let vars_clone = vars.clone();
 
+            let scheduler = self.scheduler.clone();
+
             // Dispatch the save task.
             tokio::spawn(async move {
-                let save_task = SaveSparseToLocalTask::new(&new_context);
+                let save_task = SaveSparseToHdfsTask::new(&new_context);
+
+                let scheduler_read = scheduler.read();
 
                 let var = vars_clone.get_element_unchecked(index);
+
+                info!(
+                    "[Ps.save_sparse_variable] in spawn, varname: {}, i: {}",
+                    new_context.varname.clone(),
+                    i
+                );
 
                 match save_task.run(&var) {
                     Ok(_) => {
@@ -610,15 +748,19 @@ impl Ps {
                             new_context.inner_shard,
                         );
 
+                        scheduler_read.send_save_task_state(new_context.clone(), true);
+
                         Ok(())
                     }
                     Err(err) => {
+                        scheduler_read.send_save_task_state(new_context.clone(), false);
+
                         error_bail!(
-                                "save embedding parameters failed! varname: {}, inner_shard: {}, err: {}",
-                                new_context.varname.clone(),
-                                new_context.inner_shard,
-                                err,
-                            );
+                            "save embedding parameters failed! varname: {}, inner_shard: {}, err: {}",
+                            new_context.varname.clone(),
+                            new_context.inner_shard,
+                            err,
+                        );
                     }
                 }
             });
@@ -660,8 +802,10 @@ impl Ps {
         context.has_finished = false;
         context.variable_dim = variable_dim;
 
+        let scheduler = self.scheduler.clone();
+
         tokio::spawn(async move {
-            let save_task = SaveDenseToLocalTask::new(&context);
+            let save_task = SaveDenseToHdfsTask::new(&context);
 
             let var = vars.get_element_unchecked(index);
 
@@ -672,12 +816,19 @@ impl Ps {
                         context.varname.clone()
                     );
 
+                    let scheduler_read = scheduler.read();
+                    scheduler_read.send_save_task_state(context.clone(), true);
+
                     Ok(())
                 }
                 Err(err) => {
+                    let scheduler_read = scheduler.read();
+                    scheduler_read.send_save_task_state(context.clone(), false);
+
                     error_bail!(
-                        "save dense to file failed! varname: {}",
+                        "save dense to file failed! varname: {}, err: {}",
                         context.varname.clone(),
+                        err
                     );
                 }
             }
@@ -734,11 +885,12 @@ impl Ps {
             context.shard_num = shard_num;
 
             let vars_clone = vars.clone();
+            let checkpoint_manager_clone = self.checkpoint_manager.clone();
 
             tokio::spawn(async move {
                 let var = vars_clone.get_element_unchecked(index);
 
-                let restore_task = RestoreSparseFromLocalTask::new(&context);
+                let restore_task = RestoreSparseFromHdfsTask::new(&context);
 
                 match restore_task.run(&var) {
                     Ok(_) => {
@@ -749,9 +901,27 @@ impl Ps {
                             context.path.clone(),
                         );
 
+                        let mut checkpoint_manager_write = checkpoint_manager_clone.write();
+
+                        checkpoint_manager_write.insert_restore_state(
+                            &context.varname,
+                            context.shard_index,
+                            2,
+                            true,
+                        )?;
+
                         Ok(())
                     }
                     Err(err) => {
+                        let mut checkpoint_manager_write = checkpoint_manager_clone.write();
+
+                        checkpoint_manager_write.insert_restore_state(
+                            &context.varname,
+                            context.shard_index,
+                            2,
+                            false,
+                        )?;
+
                         error_bail!(
                             "restore embedding failed! varname: {}, shard_index: {}, filename: {}",
                             context.varname.clone(),
@@ -805,8 +975,10 @@ impl Ps {
             }
         };
 
+        let checkpoint_manager_clone = self.checkpoint_manager.clone();
+
         tokio::spawn(async move {
-            let restore_task = RestoreDenseFromLocalTask::new(&context);
+            let restore_task = RestoreDenseFromHdfsTask::new(&context);
 
             let mut var = vars.get_element_mut_unchecked(index);
 
@@ -818,9 +990,28 @@ impl Ps {
                         context.path.clone(),
                     );
 
+                    // Need to update restore state.
+                    let mut checkpoint_manager_write = checkpoint_manager_clone.write();
+
+                    checkpoint_manager_write.insert_restore_state(
+                        &context.varname,
+                        context.shard_index,
+                        1,
+                        true,
+                    )?;
+
                     Ok(())
                 }
                 Err(err) => {
+                    let mut checkpoint_manager_write = checkpoint_manager_clone.write();
+
+                    checkpoint_manager_write.insert_restore_state(
+                        &context.varname,
+                        context.shard_index,
+                        1,
+                        false,
+                    )?;
+
                     error_bail!(
                         "restore dense var failed! varname: {}, path: {}, err: {}",
                         context.varname.clone(),
@@ -905,29 +1096,26 @@ impl Sniper for Ps {
             ps_shard.insert(x.0.clone(), x.1.value.clone());
         });
 
-        // self.env.assemble(&sparse_vars);
+        {
+            // Be carefull of dead lock.
+            let mut scheduler = self.scheduler.write();
 
-        if !self.scheduler.write().init(
-            &freeze_option.scheduler_ep,
-            &hub_endpoints,
-            &ps_endpoints,
-            &dense_vars,
-            &sparse_vars,
-            &ps_shard,
-        ) {
-            return send_error_message::<VoidMessage>("scheduler init failed!");
+            if !scheduler.init(
+                &freeze_option.scheduler_ep,
+                &hub_endpoints,
+                &ps_endpoints,
+                &dense_vars,
+                &sparse_vars,
+                &ps_shard,
+            ) {
+                return send_error_message::<VoidMessage>("scheduler init failed!");
+            }
         }
 
         if freeze_option.is_scheduler {
             let mut env_write = self.env.write();
 
             env_write.role = Role::Scheduler.into();
-
-            // restart schduler.
-            let mut scheduler = self.scheduler.write();
-
-            scheduler.stop();
-            scheduler.start();
         }
 
         Ok(Response::new(VoidMessage::default()))
@@ -942,6 +1130,7 @@ impl Sniper for Ps {
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         let request_inner = request.into_inner();
+
 
         let varname = request_inner.varname.clone();
         let batch_id = request_inner.seq_id;
@@ -1008,40 +1197,14 @@ impl Sniper for Ps {
             }
         };
 
-        let keys: &[u64] = match request_inner.tensor1.as_ref() {
-            Some(x) => x.as_slice::<u64>(),
-            None => {
-                return send_bad_request_error::<VoidMessage>(
-                    "tensor1",
-                    format!("tensor1 is None! varname: {}", varname.clone()),
-                );
-            }
-        };
-
-        let values: &[f32] = match request_inner.tensor1.as_ref() {
-            Some(x) => x.as_slice::<f32>(),
-            None => {
-                return send_bad_request_error::<VoidMessage>(
-                    "tensor2",
-                    format!("tensor2 is None! varname: {}", varname.clone()),
-                );
-            }
-        };
-
         if push_option.variable_type == VariableType::VarEmbedding.into() {
-            let (vars, index) = match self.embedding_manager.get_var(&varname) {
-                Some(x) => x,
-                None => {
-                    return send_error_message::<VoidMessage>(format!(
-                        "cannot find index in embedding_manager, varname: {}",
-                        varname.clone()
-                    ));
-                }
-            };
-
-            let var = vars.get_element_unchecked(index);
-
-            match var.push(batch_id, &push_option, keys, values) {
+            match self.push_sparse(
+                &varname,
+                batch_id,
+                &push_option,
+                request_inner.tensor1.as_ref(),
+                request_inner.tensor2.as_ref(),
+            ) {
                 Ok(_) => {}
                 Err(err) => {
                     return send_error_message::<VoidMessage>(format!(
@@ -1052,19 +1215,13 @@ impl Sniper for Ps {
                 }
             }
         } else {
-            let (vars, index) = match self.dense_manager.get_var(&varname) {
-                Some(x) => x,
-                None => {
-                    return send_error_message::<VoidMessage>(format!(
-                        "cannot find index in embedding_manager, varname: {}",
-                        varname.clone()
-                    ));
-                }
-            };
-
-            let mut var = vars.get_element_mut_unchecked(index);
-
-            match var.push(values) {
+            match self.push_dense(
+                &varname,
+                batch_id,
+                &push_option,
+                request_inner.tensor1.as_ref(),
+                request_inner.tensor2.as_ref(),
+            ) {
                 Ok(_) => {}
                 Err(err) => {
                     return send_error_message::<VoidMessage>(format!(
@@ -1323,6 +1480,12 @@ impl Sniper for Ps {
             }
         };
 
+        info!(
+            "[Ps.save] start, varname: {}, option: {:?}",
+            varname.clone(),
+            save_option.clone()
+        );
+
         if save_option.variable_type == VariableType::VarEmbedding.into() {
             match self.save_sparse_variable(&varname, &save_option).await {
                 Ok(_) => Ok(Response::new(VoidMessage::default())),
@@ -1350,7 +1513,7 @@ impl Sniper for Ps {
     async fn restore(
         &self,
         request: Request<TensorMessage>,
-    ) -> Result<Response<VoidMessage>, Status> {
+    ) -> Result<Response<TensorMessage>, Status> {
         let request_inner = request.into_inner();
 
         let varname = &request_inner.varname;
@@ -1358,17 +1521,60 @@ impl Sniper for Ps {
         let restore_option = match get_request_inner_options::<RestoreOption>(&request_inner) {
             Some(x) => x,
             None => {
-                return send_bad_request_error("options", "options is invalid RestoreOption!");
+                return send_bad_request_error::<TensorMessage>(
+                    "options",
+                    "options is invalid RestoreOption!",
+                );
             }
         };
+
+        {
+            let checkpoint_manager_clone = self.checkpoint_manager.clone();
+            let mut checkpoint_manager = checkpoint_manager_clone.write();
+
+            match checkpoint_manager.get_restore_state(varname, restore_option.shard_idx) {
+                Some(state) => {
+                    let mut out_option = RestoreOption::default();
+
+                    if state.is_success() {
+                        out_option.finish = true;
+                    } else if state.has_error {
+                        out_option.finish = false;
+                        out_option.errmsg = "restore failed".to_string();
+                    }
+
+                    match TensorMessage::with_option(Role::Ps, varname, &mut out_option) {
+                        Ok(response) => {
+                            return Ok(Response::new(response));
+                        }
+                        Err(err) => {
+                            return send_error_message::<TensorMessage>(format!(
+                                "encode out option failed! varname: {}",
+                                varname.clone()
+                            ));
+                        }
+                    }
+                }
+                None => {
+                    let file_count = restore_option.nfs_weight_path.len()
+                        + restore_option.nfs_adagrad_path.len();
+
+                    checkpoint_manager.init_restore_state(
+                        varname,
+                        restore_option.shard_idx,
+                        file_count as u32,
+                    );
+                }
+            }
+        }
 
         if restore_option.variable_type == VariableType::VarEmbedding.into() {
             match self
                 .restore_sparse_variable(&varname, &restore_option)
                 .await
             {
-                Ok(_) => Ok(Response::new(VoidMessage::default())),
-                Err(err) => send_error_message::<VoidMessage>(format!(
+                Ok(_) => Ok(Response::new(TensorMessage::default())),
+                Err(err) => send_error_message::<TensorMessage>(format!(
                     "restore sparse variable failed! varname: {}, err: {}",
                     varname.clone(),
                     err,
@@ -1376,8 +1582,8 @@ impl Sniper for Ps {
             }
         } else {
             match self.restore_dense_variable(&varname, &restore_option).await {
-                Ok(_) => Ok(Response::new(VoidMessage::default())),
-                Err(err) => send_error_message::<VoidMessage>(format!(
+                Ok(_) => Ok(Response::new(TensorMessage::default())),
+                Err(err) => send_error_message::<TensorMessage>(format!(
                     "restore dense variable failed! varname: {}, err: {}",
                     varname.clone(),
                     err,
@@ -1424,7 +1630,9 @@ impl Sniper for Ps {
             // Update checkpoint task status.
             match heartbeat_option.ckp_st.as_ref() {
                 Some(checkpoint_status) => {
-                    match self.scheduler.write().post_checkpoint_status(
+                    let mut scheduler = self.scheduler.write();
+
+                    match scheduler.post_checkpoint_status(
                         checkpoint_status.incr,
                         checkpoint_status.version,
                         &checkpoint_status.var_name,
@@ -1458,7 +1666,9 @@ impl Sniper for Ps {
                 }
             };
 
-            match self.scheduler.write().check_checkpoint_status(
+            let mut scheduler = self.scheduler.write();
+
+            match scheduler.check_checkpoint_status(
                 check_st.version,
                 check_st.ckp_type(),
                 check_st.ckp_target(),

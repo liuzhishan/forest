@@ -826,8 +826,12 @@ class ModelBase(ABC):
     ):
         version = int(now.timestamp())
         if rank() == 0:
-            logger.info('start save, version(%d) ckp_type(%d) ckp_target(%d)',
-                        version, ckp_type, ckp_target)
+            logger.info(
+                'start save, version(%d) ckp_type(%d) ckp_target(%d)',
+                version,
+                ckp_type,
+                ckp_target
+            )
 
             if ckp_target == 1:
                 # hdfs.
@@ -913,38 +917,8 @@ class ModelBase(ABC):
                         )
             elif ckp_target == 2:
                 # btq
-                with tf.Graph().as_default():
-                    # build graph
-                    init_op = self._build_internal(True)
-                    save_ops = []
-
-                    if ckp_type == 1:
-                        # incr
-                        save_ops = self.save_dense_vars(
-                            version * 1000, 1, 2,
-                            self._config.ckp_save_nfs_path,
-                            self._config.var_2_btq)
-                    elif ckp_type == 2:
-                        # full
-                        save_ops = self.save_dense_vars(
-                            version * 1000, 2, 2,
-                            self._config.ckp_save_nfs_path,
-                            self._config.var_2_btq) + self.save_sparse_vars(
-                                version * 1000, 2, 2,
-                                self._config.ckp_save_nfs_path,
-                                self._config.var_2_btq, {})
-
-                    check_ckp_op = self.check_ckp(
-                        version * 1000,
-                        ckp_type,
-                        ckp_target
-                    )
-
-                    with tf.Session(config=self._sess_config) as sess:
-                        sess.run(init_op)
-                        sess.run(save_ops)
-                        if wait_ps:
-                            sess.run(check_ckp_op)
+                # not supported
+                pass
 
     def save_to_hdfs(
         self,
@@ -971,7 +945,6 @@ class ModelBase(ABC):
 
             # pull lastest from ps
             pull_dense_ops = self.pull_dense_vars()
-            pull_sparse_ops = self.pull_sparse_vars()
 
             check_ckp_op = self.check_ckp(version * 1000, 2, 1)
             saver = tf.train.Saver()
@@ -979,6 +952,7 @@ class ModelBase(ABC):
             with tf.Session(config=self._ckp_sess_config) as sess:
                 sess.run(init_op)
                 if export_mode == 0:
+                    pull_sparse_ops = self.pull_sparse_vars()
                     sess.run(pull_dense_ops + pull_sparse_ops)
                 else:
                     # worker只导出 dense部分
@@ -989,30 +963,45 @@ class ModelBase(ABC):
 
                 if export_mode == 1:
                     # 发起 ps nfs全量导出
-                    save_path = "hdfs://default%s" % cur_model_path
-                    save_ps_vars = self.save_sparse_vars(
-                        version * 1000, 2, 1, save_path, {}, var_2_emb_shard) + \
-                        self.save_dense_vars(
-                        version * 1000, 2, 1, save_path, {}, var_2_emb_shard)
-                    sess.run(save_ps_vars)
+                    save_path = "viewfs://hadoop-lt-cluster%s" % cur_model_path
+                    save_ps_sparse_vars = self.save_sparse_vars(
+                        version * 1000,
+                        2,
+                        1,
+                        save_path,
+                        {},
+                        var_2_emb_shard
+                    )
+                    save_ps_dense_vars = self.save_dense_vars(
+                        version * 1000,
+                        2,
+                        1,
+                        save_path,
+                        {},
+                        var_2_emb_shard
+                    )
+
+                    sess.run(save_ps_sparse_vars + save_ps_dense_vars)
 
                 try:
-                    saver.save(sess,
-                               'hdfs://default%s/model_tf' % cur_model_path,
-                               write_meta_graph=False,
-                               write_state=False)
+                    saver.save(
+                        sess,
+                        'viewfs://hadoop-lt-cluster%s/model_tf' % cur_model_path,
+                        write_meta_graph=False,
+                        write_state=False
+                    )
                 except Exception as e:
                     logger.info(
-                        'save model_tf fail, cur_model_path: %s/model_tf',
-                        cur_model_path)
-                    logger.info(e)
+                        'save model_tf fail, cur_model_path: %s/model_tf, error: {}',
+                        cur_model_path,
+                        e
+                    )
                     return
 
                 if wait_ps and export_mode == 1:
                     sess.run(check_ckp_op)
 
-                self._update_model_version(fs, os.path.dirname(cur_model_path),
-                                           cur_model_path)
+                self._update_model_version(fs, os.path.dirname(cur_model_path), cur_model_path)
 
     def export_to_hdfs(self):
         self.save(datetime.now(), 2, 1, True)
@@ -1777,8 +1766,7 @@ class ModelBase(ABC):
         if export_mode == 1:
             p = re.compile('/model_tf.([\d]+)')
             version = int(p.search(model_path).group(1))
-            save_path = "hdfs://default%s" % new_model_path[
-                len("viewfs://hadoop-lt-cluster"):]
+            save_path = new_model_path
             logger.info("save sparse embedding into %s" % save_path)
             save_ps_vars = self.save_sparse_vars(version, 2, 1, save_path, {}, {})
 

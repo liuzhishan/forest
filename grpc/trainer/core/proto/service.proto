@@ -35,7 +35,7 @@ service Sniper {
   rpc EmbeddingLookup(TensorMessage) returns (TensorMessage);
   rpc PushGrad(TensorMessage) returns (VoidMessage);
   rpc Save(TensorMessage) returns (VoidMessage);
-  rpc Restore(TensorMessage) returns (VoidMessage);
+  rpc Restore(TensorMessage) returns (TensorMessage);
   rpc Complete(TensorMessage) returns (VoidMessage);
 
   rpc Heartbeat(TensorMessage) returns (TensorMessage);

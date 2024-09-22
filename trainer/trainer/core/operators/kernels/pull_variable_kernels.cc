@@ -43,6 +43,7 @@ class PullVariableOp : public OpKernel {
     if ((VariableType)vartype_ == VAR_DENSE) {
       auto ep = train_config_->placement()->GetDensePlacement(varname_);
       PullOption option;
+      option.set_variable_type(VariableType::VAR_DENSE);
       rpc::TensorResponse response;
       auto h = rpc_client_->PullAsync(ep, 0, varname_, option, Tensor(),
                                       Tensor(), &response);
@@ -58,9 +59,20 @@ class PullVariableOp : public OpKernel {
         auto var_flat = var.flat<float>();
         std::copy_n(ret_flat.data(), ret_flat.size(), var_flat.data());
       } else {
-        OP_REQUIRES(ctx, false,
-                    errors::Internal("pull variable[" + varname_ +
-                                     "] shape or dtype not match"));
+        std::string msg;
+
+        msg.append("pull variale failed, shape or dtype not match, varname: ")
+          .append(varname_)
+          .append(", ret.shape: ")
+          .append(absl::StrJoin(ret.shape().dim_sizes(), ","))
+          .append(", ret.dtype: ")
+          .append(std::to_string(ret.dtype()))
+          .append(", var.shape: ")
+          .append(absl::StrJoin(var.shape().dim_sizes(), ","))
+          .append(", ret.dtype: ")
+          .append(std::to_string(var.dtype()));
+
+        OP_REQUIRES(ctx, false, errors::Internal(msg));
       }
       LOG(INFO) << "pull variable success, varname: " << varname_;
     } else if ((VariableType)vartype_ == VAR_EMBEDDING) {
@@ -82,7 +94,10 @@ class PullVariableOp : public OpKernel {
           rpc::TensorResponse response;
 
           PullOption option;
+
           option.set_progress(cur_progress);
+          option.set_variable_type(VariableType::VAR_EMBEDDING);
+
           auto h = rpc_client_->PullAsync(ep, 0, varname_, option,
                                           tensorflow::Tensor(),
                                           tensorflow::Tensor(), &response);

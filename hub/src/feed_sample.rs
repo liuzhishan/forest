@@ -75,14 +75,12 @@ impl FeedSample {
     pub async fn init(&mut self) -> bool {
         // Try to get all ps clients.
         for ps_endpoint in self.ps_endpoints.iter() {
-            let ps_name = ps_endpoint.clone();
-
-            let ps_client = match get_ps_client(ps_name.clone()).await {
+            let ps_client = match get_ps_client(ps_endpoint).await {
                 Ok(client) => client,
                 Err(err) => {
                     error!(
                         "get_ps_client in hub failed! ps_endpoint: {}, err: {}",
-                        ps_name.clone(),
+                        ps_endpoint.clone(),
                         err
                     );
                     return false;

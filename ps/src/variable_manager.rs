@@ -30,6 +30,9 @@ pub struct VarnameHash {
 
     /// Varname index mapping.
     mapping: DashMap<String, usize>,
+
+    /// Where the variable deleted.
+    is_deleted: Vec<bool>,
 }
 
 impl Default for VarnameHash {
@@ -37,6 +40,7 @@ impl Default for VarnameHash {
         Self {
             varnames: Vec::with_capacity(1000),
             mapping: DashMap::new(),
+            is_deleted: Vec::new(),
         }
     }
 }
@@ -47,6 +51,7 @@ impl VarnameHash {
         Self {
             varnames: Vec::with_capacity(capacity),
             mapping: DashMap::new(),
+            is_deleted: Vec::with_capacity(capacity),
         }
     }
 
@@ -56,6 +61,8 @@ impl VarnameHash {
             Some(v) => v.value().clone(),
             None => {
                 self.varnames.push(varname.clone());
+                self.is_deleted.push(false);
+
                 self.mapping
                     .insert(varname.clone(), self.varnames.len() - 1);
 
@@ -74,7 +81,14 @@ impl VarnameHash {
 
     /// Just remove the varname from the `mapping` if exists.
     pub fn remove(&mut self, varname: &String) {
-        self.mapping.remove(varname);
+        match self.get_hash(varname) {
+            Some(v) => {
+                if v < self.is_deleted.len() {
+                    self.is_deleted[v] = true;
+                }
+            }
+            None => {}
+        }
     }
 }
 
@@ -177,10 +191,7 @@ impl<T: WithHistogram> VariableManager<T> {
     }
 
     /// Usr pair (vars, index) to represent a variable.
-    pub fn get_var(
-        &self,
-        varname: &String,
-    ) -> Option<(ArcUnsafeVec<T>, usize)> {
+    pub fn get_var(&self, varname: &String) -> Option<(ArcUnsafeVec<T>, usize)> {
         match self.get_index(varname) {
             Some(index) => Some((self.vars.clone(), index)),
             None => None,

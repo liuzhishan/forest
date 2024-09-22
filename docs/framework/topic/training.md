@@ -4,9 +4,45 @@
 
 使用 `VecDeque` 和 `DashMap` 结合的方式实现 `lru`。
 
+## `c++ 版本` `batch` 数据速度
+
+相同的资源情况下速度能到 `243848 examples/sec`, 特征一样，不过数据是拼好的 `batch`。
+
+    [1,0]<stderr>:2024-09-21 10:28:35,027 - INFO [hooks.py:465 - after_run] - step 9600, auc = 0.8267, loss = 0.2872257071, prob_mean: 0.109512, real_mean: 0.125947, (238.1 it/sec; 243848.0 examples/sec)
+    [1,0]<stderr>:2024-09-21 10:28:35,456 - INFO [hooks.py:465 - after_run] - step 9700, auc = 0.8267, loss = 0.2872743337, prob_mean: 0.109527, real_mean: 0.125963, (232.8 it/sec; 238371.1 examples/sec)
+    [1,0]<stderr>:2024-09-21 10:28:35,889 - INFO [hooks.py:465 - after_run] - step 9800, auc = 0.8267, loss = 0.2872754446, prob_mean: 0.109525, real_mean: 0.125965, (231.1 it/sec; 236693.9 examples/sec)
+    [1,0]<stderr>:2024-09-21 10:28:36,313 - INFO [hooks.py:465 - after_run] - step 9900, auc = 0.8267, loss = 0.2872792002, prob_mean: 0.109525, real_mean: 0.125968, (235.6 it/sec; 241291.7 examples/sec)
+    [1,0]<stderr>:2024-09-21 10:28:36,739 - INFO [hooks.py:465 - after_run] - step 10000, auc = 0.8266, loss = 0.2873227067, prob_mean: 0.109530, real_mean: 0.125983, (234.9 it/sec; 240575.3 examples/sec)
+    
+    
+查看耗时监控如下
+
+    [1,0]<stdout>:[2024-09-21 10:27:34.875] [info] [run_status.cc:72] [RunStatus] OpsEmbeddingLookup statistics => count: 757  P50: 27567.438692  P95: 32672.547684  P99: 39838.000000  Max: 39838.000000
+    [1,0]<stdout>:OpsPushGrad statistics => count: 758  P50: 7128.000000  P95: 9629.400000  P99: 9851.746667  Max: 10258.000000
+    [1,0]<stdout>:OpsReadSample statistics => count: 757  P50: 3972.443182  P95: 302995.000000  P99: 302995.000000  Max: 302995.000000
+
+    [1,0]<stdout>:[2024-09-21 10:28:04.876] [info] [run_status.cc:72] [RunStatus] OpsEmbeddingLookup statistics => count: 2612  P50: 28552.437902  P95: 44828.169014  P99: 48997.558685  Max: 50970.000000
+    [1,0]<stdout>:OpsReadSample statistics => count: 2616  P50: 4062.656904  P95: 6443.281853  P99: 11396.500000  Max: 298651.000000
+    [1,0]<stdout>:[2024-09-21 10:28:34.876] [info] [run_status.cc:72] [RunStatus] OpsEmbeddingLookup statistics => count: 6952  P50: 28703.185841  P95: 45343.420016  P99: 48266.000000  Max: 48266.000000
+    [1,0]<stdout>:OpsReadSample statistics => count: 6956  P50: 4365.349076  P95: 6430.344002  P99: 7487.526316  Max: 32105.000000
+
+
+### 训练资源
+
+- `trainer`: 1 T4 GPU, 30 core, 60G Mem, 1 副本。
+- `ps`: 0 GPU, 60 core, 200G Mem, 4 副本。
+- `hub`: 0 GPU, 20 core, 50G Mem, 4 副本。
+
+
 ## 训练速度慢
 
-### 怀疑点: 是否和 `lru` 有关
+### 第一轮排查
+
+#### 现在是读取单条样本，`hub` 里拼 `batch`
+
+之前是离线拼好的 `batch`，会导致一些速度差异，`batch` 数据很快。
+
+#### 是否和 `lru` 有关
 
 添加 `lru` 后速度变慢。
 
@@ -51,7 +87,7 @@
 说明和 `lru` 没关系，就是 `EmbeddingLookup` 慢, 比 `PushGrad` 和 `ReadSample` 慢几个数量级。
 
 
-### 怀疑点: `EmbeddingLookup` 时对整个 `EmbeddingManager` 加锁，锁的粒度太粗。
+#### `EmbeddingLookup` 时对整个 `EmbeddingManager` 加锁，锁的粒度太粗。
 
 目前的实现如下, 在 `tokio::spawn` 每个任务获取 `embedding_manager.clone()`, 在进行其他操作。
 这样每个线程在运行时锁是加在整个 `embedding_manager` 上的，导致其他 `var` 不能同时访问。
@@ -94,13 +130,13 @@
     }
 
 
-### 怎样将锁加在每个 `Embedding` 上 ?
+##### 怎样将锁加在每个 `Embedding` 上 ?
 
-#### 使用 `Vec` 保存 `Embedding` ?
+###### 使用 `Vec` 保存 `Embedding` ?
 
-#### `Rayon` ?
+###### `Rayon` ?
 
-#### `Arc<Vec>` ?
+###### `Arc<Vec>` ?
 
 `Arc` 表示 `Atomically Reference Counted`。
 
@@ -128,7 +164,7 @@
 可以看出，`EmbeddingLookup` 速度提高了一个数量级，但是 `ReadSample` 速度变慢了。可能和 `ps FeedSample` 有关。 
 
 
-### `hash` 函数
+#### `hash` 函数
 
 多个 `ps` 时经常报错 `EmbeddingLookup failed`, 经排查是因为不同的 `variable` 分配到不同的 `ps` 是根据变量名 `hash` 后对 ps
 总数取模决定的，而 `rust`, `c++`, `python` 中使用的 `hash` 函数不同。`rust` 中默认使用的是 `SipHash13`, `c++` 中使用的是
@@ -159,7 +195,7 @@
     [1,0]<stderr>:2024-09-17 15:03:41,350 - INFO [hooks.py:237 - after_run] - 2024-09-17 15:03:41.350390: step 347, xentropy_mean:0 = 0.26466653 (0.7 it/sec; 713.2 examples/sec)
     [1,0]<stderr>:2024-09-17 15:03:41,350 - INFO [hooks.py:237 - after_run] - 2024-09-17 15:03:41.350441: step 347, prob_mean:0 = 0.10305227 (0.7 it/sec; 713.2 examples/sec)
 
-### 排查 `EmbeddingLookup`
+#### 排查 `EmbeddingLookup` 耗时
 
 添加统计耗时直方图逻辑 `Histogram`, 对 `EmbeddingLookup` 中的步骤进行计时。
 
@@ -299,7 +335,7 @@
 有没有办法不加锁？因为 `sparse` 参数很稀疏，两个 `batch` 更新的参数可能只有少部分是重合的。
 因此如果不加锁，直接读取也写入，就会快很多。
 
-#### 使用 `SyncUnsafeCell` ?
+#### 使用 `SyncUnsafeCell` 不加锁
 
 改为 `SyncUnsafeCell` 后速度快了很多, `embedding_11` 一次查询在 `1s` 左右，相比之前提高了 5 倍。
 
@@ -340,7 +376,7 @@
     [1,0]<stderr>:OpsPushGrad statistics => count: 306  P50: 41816.949153  P95: 49752.203390  P99: 62416.000000  Max: 62416.000000
     [1,0]<stderr>:OpsReadSample statistics => count: 306  P50: 12345.180723  P95: 21159.493671  P99: 27022.000000  Max: 27022.000000
 
-### 增加资源 
+#### 增加资源 
 
 `ps` 由 `2` 个增加到 `8` 个，`hub` 由 `1` 增加到 `2` 个。速度和 `2 ps` 差不多。
 
@@ -359,6 +395,343 @@
 查看资源利用率监控，发现 `hub` cpu 利用率都不高，只有 `20%`, `ps` 不均匀，`ps 0` cpu 利用率 `59%`,
 其他 `ps` 只有 `10%` 左右。
 
-### 实验 `auto_shard`
+#### 替换最慢的特征
 
+`embedding_11` 比其他特征 `sign` 个数多了一个数量级, 将其替换为其他同样规模的特征。`OpsEmbeddingLookup` 耗时确实变小
+了，只有原来的 `1/4`, 但是训练速度能到 `3.7万每秒`, 还是有差距。
+
+奇怪的是还会报 `feed queue not rich`, 说明 `trainer` 的 `queue` 一直是空的。瓶颈还是在取 `embedding`。
+
+    [1,0]<stderr>:2024-09-19 00:19:11,793 - INFO [hooks.py:269 - after_run] - 2024-09-19 00:19:11.793460: step 15900, auc = 0.7428 (36.5 it/sec; 37378.3 examples/sec)
+    [1,0]<stderr>:2024-09-19 00:19:11,793 - INFO [hooks.py:237 - after_run] - 2024-09-19 00:19:11.793641: step 15900, xentropy_mean:0 = 0.39009726 (36.5 it/sec; 37378.1 examples/sec)
+    [1,0]<stderr>:2024-09-19 00:19:11,793 - INFO [hooks.py:237 - after_run] - 2024-09-19 00:19:11.793699: step 15900, prob_mean:0 = 0.11534940 (36.5 it/sec; 37378.3 examples/sec)
+    [1,0]<stderr>:2024-09-19 00:19:11,793 - INFO [hooks.py:237 - after_run] - 2024-09-19 00:19:11.793741: step 15900, real_mean:0 = 0.14453125 (36.5 it/sec; 37378.4 examples/sec)
+    [1,0]<stderr>:2024-09-19 00:19:11,793 - INFO [trainer.py:300 - train] - current lr: 0.050000
+    [1,0]<stderr>:INFO:tensorflow:global_step/sec: 36.6389
+    [1,0]<stderr>:2024-09-19 00:19:11,856 - INFO [basic_session_run_hooks.py:692 - _log_and_record] - global_step/sec: 36.6389
+    [1,0]<stderr>:I0919 00:19:13.452296   661 run_status.cc:71] [RunStatus]: OpsEmbeddingLookup statistics => count: 1067  P50: 206292.481977  P95: 245851.699279  P99: 249368.074150  Max: 273263.000000
+    [1,0]<stderr>:OpsPushGrad statistics => count: 1067  P50: 42420.000000  P95: 49681.558567  P99: 59878.000000  Max: 59878.000000
+    [1,0]<stderr>:OpsReadSample statistics => count: 1067  P50: 12311.558219  P95: 20680.139373  P99: 21869.825784  Max: 56117.000000
+    [1,0]<stderr>:2024-09-19 00:19:14,572 - INFO [hooks.py:269 - after_run] - 2024-09-19 00:19:14.572660: step 16000, auc = 0.7427 (36.0 it/sec; 36845.1 examples/sec)
+    [1,0]<stderr>:2024-09-19 00:19:14,572 - INFO [hooks.py:237 - after_run] - 2024-09-19 00:19:14.572830: step 16000, xentropy_mean:0 = 0.35552624 (36.0 it/sec; 36845.3 examples/sec)
+    [1,0]<stderr>:2024-09-19 00:19:14,572 - INFO [hooks.py:237 - after_run] - 2024-09-19 00:19:14.572884: step 16000, prob_mean:0 = 0.12149657 (36.0 it/sec; 36845.3 examples/sec)
+    [1,0]<stderr>:2024-09-19 00:19:14,572 - INFO [hooks.py:237 - after_run] - 2024-09-19 00:19:14.572929: step 16000, real_mean:0 = 0.13476562 (36.0 it/sec; 36845.3 examples/sec)
+
+
+#### 实验 `auto_shard`
+
+
+#### 底层实现
+
+##### tokio scheduler
+
+[Making the Tokio scheduler 10x faster](https://tokio.rs/blog/2019-10-scheduler)
+[How Tokio schedule tasks: A hard Lesson learnt](https://rustmagazine.org/issue-4/how-tokio-schedule-tasks/)
+
+This is all to say the obvious: avoid cross thread synchronization as much as possible because it is slow.
+
+Scheduler strategy:
+- one queue, many processors.
+- concurrency and mechanical sympathy.
+- many processor, each with their own queue.
+- work-stealing scheduler.
+
+
+#### lock free
+
+[Low Latency in Rust with Lock-Free Data Structures](https://www.linkedin.com/pulse/low-latency-rust-lock-free-data-structures-luis-soares-m-sc--va5xf)
+[Exploring lock-free Rust 1: Locks](https://morestina.net/blog/742/exploring-lock-free-rust-1-locks)
+[lockfree](https://crates.io/crates/lockfree)
+
+
+### 经过第一轮排查与优化后的理论速度
+
+    [1,0]<stderr>:I0919 00:19:13.452296   661 run_status.cc:71] [RunStatus]: OpsEmbeddingLookup statistics => count: 1067  P50: 206292.481977  P95: 245851.699279  P99: 249368.074150  Max: 273263.000000
+    [1,0]<stderr>:OpsPushGrad statistics => count: 1067  P50: 42420.000000  P95: 49681.558567  P99: 59878.000000  Max: 59878.000000
+    [1,0]<stderr>:OpsReadSample statistics => count: 1067  P50: 12311.558219  P95: 20680.139373  P99: 21869.825784  Max: 56117.000000
+    
+训练时获取 `EmbeddingLookup` 是同步操作，即每个 `batch` 都需要获取所有 `sparse` 特征的 `embedding sum`
+结果后再继续后面的训练，按以上耗时统计分析，`PushGrad` 和 `ReadSample` 相比 `EmbeddingLookup` 很小，
+因此瓶颈是 `EmbeddingLookup` 环节。假如按 `p95` 估计每个 `batch` 需要 `0.24s`, 则每个线程每秒可获取 `4`
+个 `batch`, 目前 `trainer` 默认有 `10` 个线程进行预取，预取队列大小为 `8`, 因此理论上美妙可以获取 `40` 个
+`batch`, `batch_size` 按 `1024` 计数，则每秒可获取 `40960` 条样本，而训练日志中的速度为 `37000/s`, 可以认为
+符合预期。即目前的速度已接近理论极限。
+
+每个 `batch` 的 `EmbeddingLookup` 返回结果大小约为 `batch_size * sparse_feature_count * embedding_size` 个
+`float`, 按 `76` 个 `sparse` 估计，结果为
+
+    1024 * 76 * 16 = 1245184 = 1m
+    
+`1m` 对于带宽来说并不大，因此主要时间还是花在 `ps` 计算上，而不是网络通信上。说明 `trainer` 主要还是在
+等待结果。因此如果加大 `trainer` 预取线程，训练速度应该会线性增长。
+
+将预取线程从 `10` 增加到 `20` 后，速度甚至有点降低, 有点奇怪。需要加点日志看下 `feed_queue` 里从 `ReadSample`
+到 `push` 到队列中间各个步骤的耗时。
+
+
+    [1,0]<stderr>:I0919 10:11:30.807346   786 run_status.cc:71] [RunStatus]: OpsEmbeddingLookup statistics => count: 906  P50: 200574.712644  P95: 247436.781609  P99: 277085.000000  Max: 277085.000000
+    [1,0]<stderr>:OpsPushGrad statistics => count: 906  P50: 41939.000000  P95: 49440.337079  P99: 60843.750000  Max: 70957.000000
+    [1,0]<stderr>:OpsReadSample statistics => count: 903  P50: 12515.517241  P95: 29311.333333  P99: 64178.571429  Max: 369546.000000
+    [1,0]<stderr>:2024-09-19 10:11:32,482 - INFO [hooks.py:269 - after_run] - 2024-09-19 10:11:32.482195: step 4200, auc = 0.7472 (29.0 it/sec; 29695.3 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:32,482 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:32.482437: step 4200, xentropy_mean:0 = 0.25089473 (29.0 it/sec; 29694.6 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:32,482 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:32.482512: step 4200, prob_mean:0 = 0.10106875 (29.0 it/sec; 29694.4 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:32,482 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:32.482572: step 4200, real_mean:0 = 0.07910156 (29.0 it/sec; 29694.2 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:32,482 - INFO [trainer.py:300 - train] - current lr: 0.050000
+    [1,0]<stderr>:INFO:tensorflow:global_step/sec: 29.9825
+    [1,0]<stderr>:2024-09-19 10:11:32,489 - INFO [basic_session_run_hooks.py:692 - _log_and_record] - global_step/sec: 29.9825
+    [1,0]<stderr>:2024-09-19 10:11:35,838 - INFO [hooks.py:269 - after_run] - 2024-09-19 10:11:35.838329: step 4300, auc = 0.7470 (29.8 it/sec; 30511.3 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:35,838 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:35.838490: step 4300, xentropy_mean:0 = 0.27898747 (29.8 it/sec; 30512.0 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:35,838 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:35.838553: step 4300, prob_mean:0 = 0.09167473 (29.8 it/sec; 30512.1 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:35,838 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:35.838593: step 4300, real_mean:0 = 0.09375000 (29.8 it/sec; 30512.3 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:35,838 - INFO [trainer.py:300 - train] - current lr: 0.050000
+    [1,0]<stderr>:INFO:tensorflow:global_step/sec: 29.6871
+    [1,0]<stderr>:2024-09-19 10:11:35,858 - INFO [basic_session_run_hooks.py:692 - _log_and_record] - global_step/sec: 29.6871
+    [1,0]<stderr>:2024-09-19 10:11:38.229491: W trainer/core/operators/kernels/feed_queue.cc:67] Trainer feed queue is not rich. trainer_id: 0, queue.size(): 0, training will bound at prefetch,  you can check trainer network and hub / ps resource.
+    [1,0]<stderr>:2024-09-19 10:11:39,212 - INFO [hooks.py:269 - after_run] - 2024-09-19 10:11:39.212078: step 4400, auc = 0.7467 (29.6 it/sec; 30352.1 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:39,212 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:39.212414: step 4400, xentropy_mean:0 = 0.30004069 (29.6 it/sec; 30350.4 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:39,212 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:39.212470: step 4400, prob_mean:0 = 0.10385576 (29.6 it/sec; 30350.5 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:39,213 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:39.213134: step 4400, real_mean:0 = 0.10449219 (29.6 it/sec; 30344.9 examples/sec)
+    [1,0]<stderr>:2024-09-19 10:11:39,213 - INFO [trainer.py:300 - train] - current lr: 0.050000
+
+
+### 第二轮排查 
+
+#### `feed_queue` 中各步骤的耗时
+
+将请求 `hub`, `ReadSample`, `EmbeddingLookup`, `push to queue` 等步骤都加上日志, `thread_id 0` 结果如下, 可以
+看出，大部分 `ReadSample` 请求都没有获取到数据。而如果从 `hub` 获取到数据，后面的 `EmbeddingLookup` 耗时与监控一致。
+
+
+说明瓶颈是 `hub` ?
+
+
+    [1,0]<stderr>:2024-09-20 13:48:34.646883: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.646898: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.650838: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.650848: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.654586: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.654607: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.658092: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.658129: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.661794: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.661806: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.665330: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.665343: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.669174: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.669191: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.672761: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.672774: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.676267: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.676285: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.679938: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.679953: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.683477: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.683485: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.687396: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.687403: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.690899: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.690909: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.694596: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.694602: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.698400: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.698407: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.701864: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.701871: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.705676: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.705685: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.709361: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.709374: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.713283: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.713297: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.716862: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.716869: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.726340: I trainer/core/operators/kernels/feed_queue.cc:258] trainer thread id: 0, after read sample, start check dim
+    [1,0]<stderr>:2024-09-20 13:48:34.726352: I trainer/core/operators/kernels/feed_queue.cc:277] trainer thread id: 0, after check dim, start embedding lookup
+    [1,0]<stderr>:2024-09-20 13:48:34.887918: I trainer/core/operators/kernels/feed_queue.cc:451] trainer thread id: 0, after embedding lookup, start check embedding result
+    [1,0]<stderr>:2024-09-20 13:48:34.887940: I trainer/core/operators/kernels/feed_queue.cc:468] trainer thread id: 0, after check embedding result, start push to queue
+    [1,0]<stderr>:2024-09-20 13:48:34.898154: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
+    [1,0]<stderr>:2024-09-20 13:48:34.898168: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
+    [1,0]<stderr>:2024-09-20 13:48:34.898173: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
+    [1,0]<stderr>:2024-09-20 13:48:34.907967: I trainer/core/operators/kernels/feed_queue.cc:258] trainer thread id: 0, after read sample, start check dim
+    [1,0]<stderr>:2024-09-20 13:48:34.907981: I trainer/core/operators/kernels/feed_queue.cc:277] trainer thread id: 0, after check dim, start embedding lookup
+    [1,0]<stderr>:2024-09-20 13:48:35.106380: I trainer/core/operators/kernels/feed_queue.cc:451] trainer thread id: 0, after embedding lookup, start check embedding result
+    [1,0]<stderr>:2024-09-20 13:48:35.106403: I trainer/core/operators/kernels/feed_queue.cc:468] trainer thread id: 0, after check embedding result, start push to queue
+
+
+#### 增加 `hub` 个数
+
+从 `2` 增加到 `4`。
+
+有一点上涨，能到 `38400 exampls/sec`, 但是与预期还是有差距。
+
+    [1,0]<stderr>:2024-09-21 09:21:46,800 - INFO [hooks.py:269 - after_run] - 2024-09-21 09:21:46.800022: step 1300, auc = 0.6715 (37.5 it/sec; 38399.8 examples/sec)
+    [1,0]<stderr>:2024-09-21 09:21:46,800 - INFO [hooks.py:237 - after_run] - 2024-09-21 09:21:46.800209: step 1300, xentropy_mean:0 = 0.30443680 (37.5 it/sec; 38400.1 examples/sec)
+    [1,0]<stderr>:2024-09-21 09:21:46,800 - INFO [hooks.py:237 - after_run] - 2024-09-21 09:21:46.800266: step 1300, prob_mean:0 = 0.08712210 (37.5 it/sec; 38400.1 examples/sec)
+    [1,0]<stderr>:2024-09-21 09:21:46,800 - INFO [hooks.py:237 - after_run] - 2024-09-21 09:21:46.800310: step 1300, real_mean:0 = 0.09960938 (37.5 it/sec; 38400.1 examples/sec)
+    
+
+查看 `after push to queue` 日志结果如下:
+
+    # grep '09:22:27' log/dsp_ctr_lzs_test_v6_2024_09_21_09_19_17.log | grep 'after push to queue'
+
+    [1,0]<stderr>:2024-09-21 09:22:27.053202: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 3, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.064763: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 2, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.076186: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 9, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.080873: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 4, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.081193: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 6, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.088784: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 5, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.102404: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 8, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.165555: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 1, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.166353: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.200455: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 7, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.305205: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 8, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.310202: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 5, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.333078: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 3, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.339847: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 4, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.342972: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 2, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.363182: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.373962: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 9, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.384125: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 6, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.431764: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 1, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.485752: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 7, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.565343: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 8, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.572960: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 5, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.607563: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 6, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.608794: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 4, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.611064: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 2, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.615670: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.633463: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 3, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.638674: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 9, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.705027: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 1, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.741057: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 7, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.855039: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 4, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.882023: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 5, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.884056: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 8, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.888113: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 6, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.888182: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 2, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.898029: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 9, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.898356: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.937386: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 3, after push to queue
+    [1,0]<stderr>:2024-09-21 09:22:27.962224: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 1, after push to queue
+
+
+    grep '09:22:27' log/dsp_ctr_lzs_test_v6_2024_09_21_09_19_17.log | grep 'after push to queue' | wc -l
+    
+    39
+    
+去掉 `trainer` 日志，能到 `49772 examples/sec`。
+
+    [1,0]<stderr>:OpsEmbeddingLookup statistics => count: 1440  P50: 209488.636364  P95: 246306.818182  P99: 249579.545455  Max: 264189.000000
+    [1,0]<stderr>:OpsPushGrad statistics => count: 1440  P50: 42283.000000  P95: 49962.800875  P99: 70073.529412  Max: 91791.000000
+    [1,0]<stderr>:OpsReadSample statistics => count: 1438  P50: 13212.349914  P95: 25916.822430  P99: 31830.093458  Max: 39568.000000
+
+    [1,0]<stderr>:2024-09-21 14:08:46,568 - INFO [hooks.py:264 - after_run] - 2024-09-21 14:08:46.568055: step 3600, auc = 0.6713 (48.6 it/sec; 49772.2 examples/sec)
+    [1,0]<stderr>:2024-09-21 14:08:46,568 - INFO [hooks.py:232 - after_run] - 2024-09-21 14:08:46.568233: step 3600, xentropy_mean:0 = 0.29283547 (48.6 it/sec; 49772.1 examples/sec)
+    [1,0]<stderr>:2024-09-21 14:08:46,568 - INFO [hooks.py:232 - after_run] - 2024-09-21 14:08:46.568289: step 3600, prob_mean:0 = 0.08826549 (48.6 it/sec; 49772.0 examples/sec)
+    [1,0]<stderr>:2024-09-21 14:08:46,568 - INFO [hooks.py:232 - after_run] - 2024-09-21 14:08:46.568333: step 3600, real_mean:0 = 0.08984375 (48.6 it/sec; 49772.0 examples/sec)
+
+
+#### 增加 `trainer` 预取线程数
+
+将 `trainer` 预取线程数从 `10` 增加到 `20`, 速度和之前差不多, 离预期还有距离。
+
+    [1,0]<stderr>:2024-09-21 09:29:01,576 - INFO [hooks.py:269 - after_run] - 2024-09-21 09:29:01.576279: step 15700, auc = 0.6591 (37.0 it/sec; 37902.6 examples/sec)
+    
+耗时监控如下, 可以看出, `EmbeddingLookup` 耗时增加约 `1` 倍, `PushGrad` 基本不变, `ReadSample` `p50` 基本不变，但是 `p95` 增加约 `1` 倍。
+
+    [1,0]<stderr>:I0921 09:38:38.752875   786 run_status.cc:71] [RunStatus]: OpsEmbeddingLookup statistics => count: 1316  P50: 462387.931034  P95: 559386.206897  P99: 568008.275862  Max: 576471.000000
+    [1,0]<stderr>:OpsPushGrad statistics => count: 1318  P50: 41835.173502  P95: 49786.829653  P99: 68785.714286  Max: 75602.000000
+    [1,0]<stderr>:OpsReadSample statistics => count: 1316  P50: 15726.872247  P95: 44936.956522  P99: 49800.434783  Max: 92753.000000
+    [1,0]<stderr>:I0921 09:39:08.753228   786 run_status.cc:71] [RunStatus]: OpsEmbeddingLookup statistics => count: 1313  P50: 462747.205503  P95: 559274.720550  P99: 567854.944110  Max: 568404.000000
+    [1,0]<stderr>:OpsPushGrad statistics => count: 1308  P50: 41818.000000  P95: 49607.075472  P99: 65916.666667  Max: 68691.000000
+    [1,0]<stderr>:OpsReadSample statistics => count: 1310  P50: 13814.439655  P95: 31207.865169  P99: 41405.555556  Max: 99806.000000
+
+资源利用率:
+
+- `hub`: cpu 利用率约 `30%`。
+- `ps`: `ps0` 利用率约为 `60%`,  不均匀，其他由于监控问题看不到。
+
+### 经过第二轮排查与优化后与 `c++` 版本对比
+
+`c++` 版本速度能到 `240000 examples/sec`, `rust` 版本约为 `40000 examples/sec`, 相差 `6` 倍。
+
+对比 `rust` `38000 examples/sec` 版本统计耗时
+
+    [1,0]<stderr>:OpsReadSample statistics => count: 1108  P50: 9651.190476  P95: 14241.509434  P99: 20931.320755  Max: 46424.000000
+    [1,0]<stderr>:OpsEmbeddingLookup statistics => count: 1106  P50: 261759.868421  P95: 310601.000000  P99: 310601.000000  Max: 310601.000000
+    [1,0]<stderr>:OpsPushGrad statistics => count: 1107  P50: 41825.000000  P95: 49584.461967  P99: 65456.896552  Max: 71762.000000
+
+`c++` 版本耗时统计如下。
+
+    [1,0]<stdout>:OpsReadSample statistics => count: 757  P50: 3972.443182  P95: 302995.000000  P99: 302995.000000  Max: 302995.000000
+    [1,0]<stdout>:OpsEmbeddingLookup statistics => count: 757  P50: 27567.438692  P95: 32672.547684  P99: 39838.000000  Max: 39838.000000
+    [1,0]<stdout>:OpsPushGrad statistics => count: 758  P50: 7128.000000  P95: 9629.400000  P99: 9851.746667  Max: 10258.000000
+    
+
+`c++` 版本与 `rust` 版本对比如下。
+备注: 计时单位为微妙。
+
+| 统计项          | rust p50 | rust p95 | c++ p50 | c++ p95 | p50 speedup | p95 speedup |
+|-----------------|----------|----------|---------|---------|-------------|-------------|
+| ReadSample      | 9,651    | 14,241   | 3,972   | 302,995 | 2.43x       | 0.05x       |
+| EmbeddingLookup | 261,759  | 310,601  | 27,567  | 32,672  | 9.50x       | 9.51x       |
+| PushGrad        | 41,825   | 49,584   | 7,128   | 9,626   | 5.87x       | 5.15x       |
+
+从主要的三项耗时统计来看，`ReadSample` 有 `2.43x` 的差距，可能是因为 `c++` 版本读取的是 `batch` 数据,
+这种数据格式基本就是二进制的格式，直接按 `byte` 进行读取，速度非常快，而 `rust` 读取的是 `proto` 格式的
+单条样本格式，还需要再拼 `batch`，速度会有差异。后面会尝试一种更新的可能比 `batch` 数据更好的格式。
+
+更大的差异在于 `ps` 上的速度差异。从耗时可以看出，不管是 `c++` 版本还是 `rust` 版本，主要瓶颈都在
+`EmbeddingLookup` 这一步。`c++` 版本快了 `9` 倍多。`ps` 上涉及的计算逻辑比较多，而且涉及到各种多线程
+并发访问的问题，可能还是和具体实现有关系。
+
+理论上 `rust` 的性能应该能和 `c++` 到统一水平, 实际 `rust` 差这么多有点出乎意料。
+
+从实现上看差异比较大的主要是三个: 
+
+- 保存参数的实现：
+    - `rust`: 采用 `Vec<DashMap>` 来保存参数，固定分片，`shard` 会有锁，内部保存的数据是 `lock free`,
+    并且 `map` 采用 `swiss table` 的思路实现，利用 `simd` 加速。
+    - `c++`: 基于 `circular buffer` 自己实现了 `lru`，结合 `folly concurrent hashmap` 手动管理内存。
+    这种实现会预分配一大片内存用户保存参数，不会有 `malloc` 和 `delete` 带来的问题。保存的数据也是
+    `lock free`。
+- `scheduler`:
+    - `rust`: 直接使用了 `tokio` 提供的 `scheduler` 来调度并发任务。仔细看了 `tokio scheduler` 的原理，
+    感觉和 `c++` 中自己实现的 `scheduler` 思路类似， 都是多个 `processors`, 每个都有自己的 `queue`,
+    而且 `tokio` 的实现更完善一些，不应该有这么大差异。
+    - `c++`: 自己实现的 `scheduler`。 思路是多个 `processors`, 每个都有自己的 `queue`。
+- `grpc`:
+    - `rust`: 直接使用 `tonic` 框架。
+    - `c++`: 使用的是 `c++ grpc`, 同时封装了一些 `zero copy` 的优化。考虑到主要耗时的计算逻辑是
+    `Embedding` 参数的查询与更新，`grpc` 请求 `qps` 并不是很高，因此 `grpc` 请求这一因素应该影响不大。
+
+待仔细研究。
+
+TODO:
+- 仔细对比 `ps` 中的耗时监控。
+- 仔细对比 `map` 的单线程读写性能。
+- 仔细对比 `map` 的多线程读写性能。
+
+### 第三轮排查
+
+#### `simd` 加速
+
+突然想到 `c++` 版本中 `ps` `EmbeddingLookup` 与 `PushGrad` 都用了 `simd` 加速来计算 `sum`,  `sum` 是
+一个高频操作。利用 `__mm256` 系列指令同时计算 `8` 个 `float` 的运算结果。理论上有 `8` 倍的加速，好
+像和速度差异差不多。如果用 `__mm512` 系列则能够同时计算 `16` 个 `float`。
+
+参考:
+- [Nine Rules for SIMD Acceleration of Your Rust Code (Part 1)](https://towardsdatascience.com/nine-rules-for-simd-acceleration-of-your-rust-code-part-1-c16fe639ce21)
+- [Nine Rules for SIMD Acceleration of your Rust Code (Part 2)](https://towardsdatascience.com/nine-rules-for-simd-acceleration-of-your-rust-code-part-2-6a104b3be6f3)
+
+使用 `simd` 需要 `rust nightly`, 按如下步骤安装
+
+    rustup install nightly
+    rustup update nightly
+    rustup override set nightly
+
+    cargo install cargo-simd-detect --force
+    cargo simd-detect
+    
+    export RUSTFLAGS="-C target-feature=+avx2"
 

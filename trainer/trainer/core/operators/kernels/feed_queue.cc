@@ -64,7 +64,7 @@ void FeedQueue::init() {
           break;
         }
         if (queue_.size() < 5) {
-          LOG(WARNING) << "Trainer feed queue size({1}) is not rich. trainer_id: " << trainer_id_
+          LOG(WARNING) << "Trainer feed queue is not rich. trainer_id: " << trainer_id_
                        << ", queue.size(): " << queue_.size()
                        << ", training will bound at prefetch, "
                        << " you can check trainer network and hub / ps resource.";
@@ -251,6 +251,7 @@ void FeedQueue::consume(int thread_id) {
           monitor::kOpsReadSample,
           std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
     }
+
     // type && dim check
     if (feature->label_tensor.dim_size(0) != label_size || feature->label_tensor.dim_size(1) != batch_size) {
       LOG(WARNING) << "Trainer label tensor shape not match, trainer_id: " << trainer_id_

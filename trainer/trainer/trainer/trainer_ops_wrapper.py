@@ -205,7 +205,7 @@ class TrainerOpsBase(object):
         """
         with tf.device('/cpu:0'):
             version_tensor = tf.convert_to_tensor(version, name="ckp_version")
-            return _trainer_ops_so.klearn_save(
+            return _trainer_ops_so.sniper_save(
                 version_tensor,
                 var_name,
                 ckp_type,
@@ -234,7 +234,7 @@ class TrainerOpsBase(object):
         Blocking. Need to wait restore to finish.
         """
         with tf.device('/cpu:0'):
-            return _trainer_ops_so.klearn_restore(
+            return _trainer_ops_so.sniper_restore(
                 varname,
                 shard_idx,
                 shard_num,

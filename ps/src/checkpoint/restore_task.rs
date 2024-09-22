@@ -4,6 +4,7 @@ use std::cmp::min;
 use std::{fs::File, io::Write};
 use util::error_bail;
 
+use std::io::BufRead;
 use std::io::BufReader;
 
 use log::{error, info};
@@ -16,7 +17,7 @@ use crate::dense::DenseVariable;
 use crate::embedding::{Embedding, SparseParameter};
 use crate::env::Env;
 
-use super::file_handler::{FileReader, LocalFileReader};
+use super::file_handler::{FileReader, HdfsFileReader, LocalFileReader};
 use super::tool::CheckpointContext;
 
 /// Parse proto from base64 string.
@@ -80,79 +81,91 @@ impl<R: FileReader> RestoreSparseTask<R> {
         embedding: &Embedding,
         is_embedding_weight: bool,
     ) -> Result<()> {
-        let mut reader = R::new(filename)?;
+        let mut reader = R::get_reader(filename)?;
 
         let mut total_count: u64 = 0;
 
         let embedding_size = embedding.embedding_size as usize;
 
-        while let Ok(line) = reader.read_line() {
-            let sparse_data = parse_proto_base64::<GpuPsSparseData>(&line)?;
+        for x in reader.lines() {
+            match x {
+                Ok(line) => {
+                    let sparse_data = parse_proto_base64::<GpuPsSparseData>(&line)?;
 
-            // Check id len and val len.
-            if sparse_data.id.len() * embedding_size != sparse_data.val.len() {
-                error_bail!(
-                    "id.len() * embedding_size != val.len() for sparse parameter, id.len(): {}, val.len(): {}, varname: {}, filename: {}",
-                    sparse_data.id.len(),
-                    sparse_data.val.len(),
-                    self.context.varname.clone(),
-                    filename.clone(),
-                );
-            }
+                    // Check id len and val len.
+                    if sparse_data.id.len() * embedding_size != sparse_data.val.len() {
+                        error_bail!(
+                            "id.len() * embedding_size != val.len() for sparse parameter, id.len(): {}, val.len(): {}, varname: {}, filename: {}",
+                            sparse_data.id.len(),
+                            sparse_data.val.len(),
+                            self.context.varname.clone(),
+                            filename.clone(),
+                        );
+                    }
 
-            for (i, sign) in sparse_data.id.iter().enumerate() {
-                let start = i * embedding_size;
-                let end = start + embedding_size;
+                    for (i, sign) in sparse_data.id.iter().enumerate() {
+                        let start = i * embedding_size;
+                        let end = start + embedding_size;
 
-                let weight = &sparse_data.val[start..end];
+                        let weight = &sparse_data.val[start..end];
 
-                if self.has_nan(weight) {
-                    error!(
-                        "sparse parameter has nan! varname: {}, filename: {}, sign: {}, start: {}, end: {}, is_embedding_weight: {}",
-                        self.context.varname.clone(),
-                        filename.clone(),
-                        sign,
-                        start,
-                        end,
-                        is_embedding_weight,
-                    );
-                    continue;
-                }
+                        if self.has_nan(weight) {
+                            error!(
+                                "sparse parameter has nan! varname: {}, filename: {}, sign: {}, start: {}, end: {}, is_embedding_weight: {}",
+                                self.context.varname.clone(),
+                                filename.clone(),
+                                sign,
+                                start,
+                                end,
+                                is_embedding_weight,
+                            );
+                            continue;
+                        }
 
-                total_count += 1;
+                        total_count += 1;
 
-                match embedding.store.get_mut(&sign) {
-                    Some(mut x) => {
-                        // If `SparseParameter` exists, write into weight in `SparseParameter`.
-                        for (j, v) in weight.iter().enumerate() {
-                            let index = if is_embedding_weight {
-                                j
-                            } else {
-                                j + embedding_size
-                            };
+                        match embedding.store.get_mut(&sign) {
+                            Some(mut x) => {
+                                // If `SparseParameter` exists, write into weight in `SparseParameter`.
+                                for (j, v) in weight.iter().enumerate() {
+                                    let index = if is_embedding_weight {
+                                        j
+                                    } else {
+                                        j + embedding_size
+                                    };
 
-                            if index < x.weight.len() {
-                                x.weight[index] = *v;
-                            } else {
-                                error_bail!(
-                                    "out of range, index: {}, x.weight.len(): {}, is_embedding_weight: {}",
-                                    index,
-                                    x.weight.len(),
-                                    is_embedding_weight,
-                                );
+                                    if index < x.weight.len() {
+                                        x.weight[index] = *v;
+                                    } else {
+                                        error_bail!(
+                                            "out of range, index: {}, x.weight.len(): {}, is_embedding_weight: {}",
+                                            index,
+                                            x.weight.len(),
+                                            is_embedding_weight,
+                                        );
+                                    }
+                                }
+                            }
+                            None => {
+                                // If `SparseParameter` not exists, insert new `SparseParameter` with weight.
+                                //
+                                // For adagrad.
+                                //
+                                // TODO: Add trait to support more optimizer.
+                                let new_param =
+                                    SparseParameter::with_half_slice(weight, is_embedding_weight);
+                                embedding.store.insert(sign.clone(), new_param);
                             }
                         }
                     }
-                    None => {
-                        // If `SparseParameter` not exists, insert new `SparseParameter` with weight.
-                        //
-                        // For adagrad.
-                        //
-                        // TODO: Add trait to support more optimizer.
-                        let new_param =
-                            SparseParameter::with_half_slice(weight, is_embedding_weight);
-                        embedding.store.insert(sign.clone(), new_param);
-                    }
+                }
+                Err(err) => {
+                    error_bail!(
+                        "read line failed! varname: {}, path: {}, err: {}",
+                        self.context.varname.clone(),
+                        self.context.path.clone(),
+                        err
+                    );
                 }
             }
         }
@@ -222,16 +235,28 @@ impl<R: FileReader> RestoreDenseTask<R> {
     ///
     /// Filename is stored in context.path.
     pub fn run(&self, dense_variable: &mut DenseVariable) -> Result<()> {
-        let mut reader = R::new(&self.context.path)?;
+        let mut reader = R::get_reader(&self.context.path)?;
 
         let mut total_count: u64 = 0;
 
-        while let Ok(line) = reader.read_line() {
-            let dense_data = parse_proto_base64::<GpuPsDenseData>(&line)?;
+        for x in reader.lines() {
+            match x {
+                Ok(line) => {
+                    let dense_data = parse_proto_base64::<GpuPsDenseData>(&line)?;
+                    dense_variable
+                        .push_from_slice(&dense_data.value, dense_data.offset_idx as usize)?;
 
-            dense_variable.push_from_slice(&dense_data.value, dense_data.offset_idx as usize)?;
-
-            total_count += dense_data.value.len() as u64;
+                    total_count += dense_data.value.len() as u64;
+                }
+                Err(err) => {
+                    error_bail!(
+                        "read line failed! varname: {}, path: {}, err: {}",
+                        self.context.varname.clone(),
+                        self.context.path.clone(),
+                        err
+                    );
+                }
+            }
         }
 
         Ok(())
@@ -240,3 +265,6 @@ impl<R: FileReader> RestoreDenseTask<R> {
 
 pub type RestoreSparseFromLocalTask = RestoreSparseTask<LocalFileReader>;
 pub type RestoreDenseFromLocalTask = RestoreDenseTask<LocalFileReader>;
+
+pub type RestoreSparseFromHdfsTask = RestoreSparseTask<HdfsFileReader>;
+pub type RestoreDenseFromHdfsTask = RestoreDenseTask<HdfsFileReader>;

@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use log::{error, info};
 use prost::{Message, Name};
 
+use prost_types::{field_options, Any};
 use tensorflow::{Tensor, TensorType};
 
 tonic::include_proto!("sniper");
@@ -56,6 +57,21 @@ impl TensorProto {
         }
     }
 
+    /// Construct an empty tensor.
+    ///
+    /// The main purpose of the this function is to set `dtype` for a tensor. Otherwise it will
+    /// fail in checking.
+    pub fn empty() -> Self {
+        Self {
+            dtype: DataType::DtInt32.into(),
+            tensor_shape: None,
+            tensor_content: Vec::new(),
+            float_val: Vec::new(),
+            uint64_val: Vec::new(),
+        }
+    }
+
+    /// As slice of type `&[T]`.
     pub fn as_slice<T: TensorType>(&self) -> &[T] {
         let (head, body, tail) = unsafe { self.tensor_content.align_to::<T>() };
 
@@ -66,7 +82,38 @@ impl TensorProto {
     }
 }
 
-impl TensorMessage {}
+impl TensorMessage {
+    pub fn with_option<T: prost::Message + prost::Name>(
+        role: Role,
+        varname: &String,
+        option: &mut T,
+    ) -> Result<Self> {
+        let res_options = match Any::from_msg(option) {
+            Ok(x) => x,
+            Err(err) => {
+                error!(
+                    "encode any from out option failed! varname: {}, err: {}",
+                    varname.clone(),
+                    err,
+                );
+
+                return Err(err.into());
+            }
+        };
+
+        let response = TensorMessage {
+            role: role.into(),
+            role_id: Into::<i32>::into(role) as u32,
+            seq_id: 0,
+            varname: varname.clone(),
+            options: Some(res_options),
+            tensor1: None,
+            tensor2: None,
+        };
+
+        Ok(response)
+    }
+}
 
 impl VoidMessage {}
 

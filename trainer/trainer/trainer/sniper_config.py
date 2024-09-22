@@ -877,9 +877,11 @@ class SniperConf(object):
 
         if len(self.ckp_restore_nfs_path) == 0 and len(self.warmup_path) != 0:
             self.ckp_restore_nfs_path = self.warmup_path
-        if len(self.ckp_save_nfs_path) == 0 and len(
-                self.model_export_root_path) != 0:
+
+        if (len(self.ckp_save_nfs_path) == 0
+            and len(self.model_export_root_path) != 0):
             self.ckp_save_nfs_path = self.model_export_root_path
+
         if self.ckp_save_nfs_full_interval == 0 and self.export_interval != 0:
             self.ckp_save_nfs_full_interval = self.export_interval
 
