@@ -170,8 +170,6 @@ impl BatchAssembler {
                             }
                         }
 
-                        info!("batch_index: {}", self.batch_index);
-
                         // If batch_index >= batch_size, we have enough data to send.
                         // Then reset the batch.
                         let is_enough = self.batch_index >= self.batch_size;
@@ -183,7 +181,6 @@ impl BatchAssembler {
                                 &mut last_batch_time,
                             );
 
-                            info!("is enough, send batch");
                             let new_batch = self.sample_batch;
                             match self.batch_sender.send(new_batch).await {
                                 Ok(_) => {},
@@ -193,8 +190,6 @@ impl BatchAssembler {
                             }
 
                             self.total_batch += 1;
-
-                            info!("is enough, send batch done, total_batch: {}", self.total_batch);
 
                             // After each SampleBatch, must reset batch_index to 0, and sample_batch to new SampleBatch.
                             self.batch_index = 0;

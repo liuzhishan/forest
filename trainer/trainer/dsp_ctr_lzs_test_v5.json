@@ -4,7 +4,7 @@
     "ks_feature_config_path": "dsp_conv_sxb_nebula_appid_large_new_v1.txt",
     "kafka_train": false,
     "batch_size": 1024,
-    "export_interval": 120,
+    "export_interval": 600,
     "warmup_tf_model": "/home/ad/model_offline/dsp_ctr_lzs_test_v5/model_tf.202409211422",
     "restore_mode": 1,
     "export_mode": 1,

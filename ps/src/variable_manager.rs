@@ -171,7 +171,11 @@ impl<T: WithHistogram> VariableManager<T> {
         let mut hasher = self.varname_hash.lock().unwrap();
         let h = hasher.add_varname(varname);
 
+        info!("[VariableManager.add_new_var] before get lock, varname: {}", varname.clone());
+
         let _lock = self.vars_lock.lock().unwrap();
+
+        info!("[VariableManager.add_new_var] after get lock, varname: {}", varname.clone());
 
         let size = self.vars.len();
 
@@ -179,10 +183,14 @@ impl<T: WithHistogram> VariableManager<T> {
             let mut var = self.vars.get_element_mut_unchecked(h);
             *var = v;
 
+            info!("[VariableManager.add_new_var] replace var success, varname: {}", varname.clone());
+
             Ok(())
         } else if h == size {
             // Must be exactly vars.len().
             self.vars.push(v);
+
+            info!("[VariableManager.add_new_var] add new var success, varname: {}", varname.clone());
 
             Ok(())
         } else {

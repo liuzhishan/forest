@@ -7,6 +7,10 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 description = "util for sniper."
 
+[[test]]
+name = "test"
+path = "tests/tests.rs"
+
 [dependencies]
 log = "0.4"
 env_logger = "0.7"

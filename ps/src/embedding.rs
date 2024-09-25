@@ -24,9 +24,13 @@
 //! that the size of map will be too large to fit into the memory of `ps`. So we must
 //! use `LRUCache` to store the parameters.
 //!
+#![feature(portable_simd)]
+use core::simd::prelude::*;
+
 use grpc::sniper::EmbeddingLookupOption;
 use likely_stable::{likely, unlikely};
 use log::{error, info};
+use util::simd::sum_f32_vectors_simd_flex;
 use std::collections::VecDeque;
 use std::hash::RandomState;
 use std::ops::Deref;
@@ -54,6 +58,9 @@ use dashmap::DashMap;
 use util::error_bail;
 use util::get_target_shard_by_sign;
 use util::histogram::HistogramType;
+
+use util::simd::adagrad_update;
+use util::simd::sum_f32_vectors_simd_no_copy;
 
 /// Sparse Parameter for sparse signs.
 pub struct SparseParameter {
@@ -579,13 +586,17 @@ impl Embedding {
     ) -> Result<EmbeddingLookupResult> {
         let mut res = EmbeddingLookupResult::default();
 
+        res.values.resize(batch_size, vec![0.0; self.embedding_size]);
+
         let mut last = Instant::now();
 
-        // Initialize with 0.0.
-        res.values.resize(batch_size, Vec::new());
-        for i in 0..res.values.len() {
-            res.values[i].resize(self.embedding_size, 0.0);
-        }
+        // let zeros = vec![0.0; 16];
+
+        // Currently only support 32 float, need to change to generic parameters.
+        // let mut simd_values: Vec<Simd<f32, 16>> = Vec::with_capacity(batch_size);
+        // for i in 0..batch_size {
+        //     simd_values.push(Simd::<f32, 16>::from_slice(zeros.as_slice()));
+        // }
 
         // get batch_message received from hub.
         let batch_message = match self.pull_feed_queue(field, batch_id) {
@@ -625,9 +636,15 @@ impl Embedding {
             match self.store.get(&signs[i]) {
                 Some(x) => {
                     // If found sign, sum the embedding weight to res.values.
-                    for j in 0..self.embedding_size {
-                        res.values[item_index][j] += x.weight[j];
-                    }
+                    // for j in 0..self.embedding_size {
+                    //     res.values[item_index][j] += x.weight[j];
+                    // }
+
+                    //
+                    // Use simd to speedup.
+                    // sum_f32_vectors_simd_no_copy::<16>(&mut simd_values[item_index], &x.weight);
+                    // sum_f32_vectors_simd_mm256(&mut res.values[item_index], &x.weight[0..self.embedding_size]);
+                    sum_f32_vectors_simd_flex::<8>(&mut res.values[item_index], &x.weight[0..self.embedding_size]);
                 }
                 None => {
                     // If not found, insert new SparseParameter into store.
@@ -636,6 +653,11 @@ impl Embedding {
                 }
             }
         }
+
+        // Copy the sum result.
+        // for i in 0..batch_size {
+        //     res.values[i] = simd_values[i].to_array().into();
+        // }
 
         // After lookup, push batch_message to lookup_queue for grad parameter updating later.
         self.push_lookup_queue(field, batch_id, batch_message)?;
@@ -688,16 +710,21 @@ impl Embedding {
             match self.store.get_mut(sign) {
                 Some(mut x) => {
                     // For each sign, sum the grad parameter to weight.
-                    self.apply_adagrad_w(
-                        &mut x.weight,
-                        grad,
-                        self.embedding_size,
-                        learning_rate,
-                        eta,
-                        eps,
-                        decay,
-                        l2,
-                    )?;
+                    //
+                    // Using `simd` to speedup.
+                    let (w, g) = x.weight.split_at_mut(self.embedding_size);
+                    adagrad_update::<8>(w, g, grad, learning_rate, eps)?;
+
+                    // self.apply_adagrad_w(
+                    //     &mut x.weight,
+                    //     grad,
+                    //     self.embedding_size,
+                    //     learning_rate,
+                    //     eta,
+                    //     eps,
+                    //     decay,
+                    //     l2,
+                    // )?;
                 }
                 None => {
                     // Skip. Maybe need some log.

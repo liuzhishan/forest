@@ -4,6 +4,9 @@ use log::{error, info};
 use std::hash::SipHasher;
 use std::thread;
 
+use rand::Rng;
+use rand::RngCore;
+
 use anyhow::anyhow;
 use anyhow::bail;
 
@@ -78,6 +81,7 @@ pub fn compute_hash<T: Hash>(t: &T) -> u64 {
     s.finish()
 }
 
+#[inline]
 pub fn simple_string_to_int_hash(s: &str) -> u64 {
     let mut hash = 0u64;
     for byte in s.bytes() {
@@ -95,4 +99,15 @@ pub fn simple_string_to_int_hash(s: &str) -> u64 {
 #[inline]
 pub fn get_target_shard_by_sign(sign: u64, shard_num: usize) -> usize {
     (sign & (shard_num - 1) as u64) as usize
+}
+
+#[inline]
+pub fn gen_random_f32_list(n: usize) -> Vec<f32> {
+    let mut res = Vec::with_capacity(n);
+
+    for i in 0..n {
+        res.push(rand::thread_rng().gen::<f32>());
+    }
+
+    res
 }

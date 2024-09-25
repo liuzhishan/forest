@@ -5,6 +5,9 @@
 //! and use case, We dont use generic data structure. Instend we use concrete
 //! data structure and variable_manager for them.
 
+#![feature(portable_simd)]
+use core::simd::prelude::*;
+
 pub mod tool;
 pub use tool::get_ps_client;
 

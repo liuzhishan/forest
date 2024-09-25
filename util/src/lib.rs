@@ -1,3 +1,6 @@
+#![feature(portable_simd)]
+use core::simd::prelude::*;
+
 mod util;
 pub use util::*;
 
@@ -12,3 +15,5 @@ pub use status::Status;
 pub use status::StatusCode;
 
 pub mod histogram;
+
+pub mod simd;
