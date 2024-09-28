@@ -14,7 +14,7 @@ use util::error_bail;
 use util::histogram;
 use util::histogram::WithHistogram;
 
-use crate::arc_unsafe_vec::ArcUnsafeVec;
+use crate::arc_unsafe_vec::ArcInnerUnsafeVec;
 use crate::dense::DenseVariable;
 
 use util::histogram::Histogram;
@@ -140,7 +140,7 @@ pub struct VariableManager<T: WithHistogram> {
     ///
     /// Since member of tonic rpc server must be immutable, vars need to be immutable too. We use
     /// `SyncUnsafeCell` to get mutablity.
-    vars: ArcUnsafeVec<T>,
+    vars: ArcInnerUnsafeVec<T>,
 
     /// Lock for creating variable.
     vars_lock: Mutex<bool>,
@@ -158,7 +158,7 @@ pub struct VariableManager<T: WithHistogram> {
 impl<T: WithHistogram> VariableManager<T> {
     pub fn new(histogram: Histogram) -> Self {
         Self {
-            vars: ArcUnsafeVec::with_capacity(2000),
+            vars: ArcInnerUnsafeVec::with_capacity(2000),
             vars_lock: Mutex::new(true),
             varname_hash: Mutex::new(VarnameHash::default()),
             max_size: 2000,
@@ -171,11 +171,7 @@ impl<T: WithHistogram> VariableManager<T> {
         let mut hasher = self.varname_hash.lock().unwrap();
         let h = hasher.add_varname(varname);
 
-        info!("[VariableManager.add_new_var] before get lock, varname: {}", varname.clone());
-
         let _lock = self.vars_lock.lock().unwrap();
-
-        info!("[VariableManager.add_new_var] after get lock, varname: {}", varname.clone());
 
         let size = self.vars.len();
 
@@ -183,14 +179,10 @@ impl<T: WithHistogram> VariableManager<T> {
             let mut var = self.vars.get_element_mut_unchecked(h);
             *var = v;
 
-            info!("[VariableManager.add_new_var] replace var success, varname: {}", varname.clone());
-
             Ok(())
         } else if h == size {
             // Must be exactly vars.len().
             self.vars.push(v);
-
-            info!("[VariableManager.add_new_var] add new var success, varname: {}", varname.clone());
 
             Ok(())
         } else {
@@ -199,7 +191,7 @@ impl<T: WithHistogram> VariableManager<T> {
     }
 
     /// Usr pair (vars, index) to represent a variable.
-    pub fn get_var(&self, varname: &String) -> Option<(ArcUnsafeVec<T>, usize)> {
+    pub fn get_var(&self, varname: &String) -> Option<(ArcInnerUnsafeVec<T>, usize)> {
         match self.get_index(varname) {
             Some(index) => Some((self.vars.clone(), index)),
             None => None,
@@ -218,7 +210,7 @@ impl<T: WithHistogram> VariableManager<T> {
         hasher.remove(varname)
     }
 
-    pub fn vars_arc(&self) -> ArcUnsafeVec<T> {
+    pub fn vars_arc(&self) -> ArcInnerUnsafeVec<T> {
         self.vars.clone()
     }
 }

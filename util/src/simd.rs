@@ -1,14 +1,14 @@
 //! Functions using simd.
 
 #![feature(portable_simd)]
-use core::{simd::prelude::*};
+use core::simd::prelude::*;
 
 use std::mem::size_of;
 
 use std::simd::StdFloat;
 
-use log::{info, error};
 use anyhow::{bail, Result};
+use log::{error, info};
 
 use likely_stable::{likely, unlikely};
 
@@ -18,12 +18,12 @@ use crate::error_bail;
 ///
 /// The length must be exactly equal to `N`. The value is directly added to the first parameter.
 #[inline]
-pub fn sum_f32_vectors_simd_no_copy<const N: usize>(a: &mut Simd<f32, N>, b: &Vec<f32>)
+pub fn sum_f32_vectors_simd_no_copy<const N: usize>(a: &mut Simd<f32, N>, b: &[f32])
 where
     std::simd::LaneCount<N>: std::simd::SupportedLaneCount,
     std::simd::Simd<f32, N>: SimdFloat,
 {
-    let b_chunk = Simd::<f32, N>::from_slice(b.as_slice());
+    let b_chunk = Simd::<f32, N>::from_slice(b);
     *a += b_chunk;
 }
 
@@ -31,17 +31,17 @@ where
 ///
 /// The length must be exactly equal to `N`.
 #[inline]
-pub fn sum_f32_vectors_simd<const N: usize>(a: &mut Vec<f32>, b: &Vec<f32>)
+pub fn sum_f32_vectors_simd<const N: usize>(a: &mut [f32], b: &[f32])
 where
     std::simd::LaneCount<N>: std::simd::SupportedLaneCount,
     std::simd::Simd<f32, N>: SimdFloat,
 {
-    let mut a_chunk = Simd::<f32, N>::from_slice(a.as_slice());
-    let b_chunk = Simd::<f32, N>::from_slice(b.as_slice());
+    let mut a_chunk = Simd::<f32, N>::from_slice(a);
+    let b_chunk = Simd::<f32, N>::from_slice(b);
 
     a_chunk += b_chunk;
 
-    a_chunk.copy_to_slice(a.as_mut_slice());
+    a_chunk.copy_to_slice(a);
 }
 
 /// Using simd to speedup f32 vector sum.
@@ -50,7 +50,7 @@ where
 ///
 /// The length of `a` and `b` must be same.
 #[inline]
-pub fn sum_f32_vectors_simd_flex<const N: usize>(a: &mut Vec<f32>, b: &[f32])
+pub fn sum_f32_vectors_simd_flex<const N: usize>(a: &mut [f32], b: &[f32])
 where
     std::simd::LaneCount<N>: std::simd::SupportedLaneCount,
     std::simd::Simd<f32, N>: SimdFloat,
@@ -59,10 +59,10 @@ where
     let simd_len = len - (len % N);
 
     for i in (0..simd_len).step_by(N) {
-        let a_chunk = Simd::<f32, N>::from_slice(&a[i..i+N]);
-        let b_chunk = Simd::<f32, N>::from_slice(&b[i..i+N]);
+        let a_chunk = Simd::<f32, N>::from_slice(&a[i..i + N]);
+        let b_chunk = Simd::<f32, N>::from_slice(&b[i..i + N]);
         let sum = a_chunk + b_chunk;
-        sum.copy_to_slice(&mut a[i..i+N]);
+        sum.copy_to_slice(&mut a[i..i + N]);
     }
 
     // Handle remaining elements
@@ -74,13 +74,13 @@ where
 // Scalar fallback implementation remains the same.
 //
 /// The length of `a` and `b` must be same.
-fn sum_f32_vectors_scalar(a: &mut Vec<f32>, b: &Vec<f32>) {
+fn sum_f32_vectors_scalar(a: &mut [f32], b: &[f32]) {
     for i in 0..a.len() {
         a[i] += b[i];
     }
 }
 
-pub fn sum_f32_vectors_flex(a: &mut Vec<f32>, b: &Vec<f32>) {
+pub fn sum_f32_vectors_flex(a: &mut [f32], b: &[f32]) {
     if is_x86_feature_detected!("avx2") {
         sum_f32_vectors_simd_flex::<8>(a, b)
     } else if is_x86_feature_detected!("sse2") {
@@ -164,14 +164,14 @@ pub fn adagrad_update<const N: usize>(
 ) -> Result<()>
 where
     std::simd::LaneCount<N>: std::simd::SupportedLaneCount,
-    Simd<f32, N>: SimdFloat
+    Simd<f32, N>: SimdFloat,
 {
     // Ensure all input slices have the same length
-    if w.len() != g.len() {
+    if unlikely(w.len() != g.len()) {
         error_bail!("Weights and accumulated gradients must have the same length");
     }
 
-    if w.len() != gradient.len() {
+    if unlikely(w.len() != gradient.len()) {
         error_bail!("Weights and gradient must have the same length");
     }
 
@@ -181,13 +181,13 @@ where
     // SIMD update for chunks of size N
     for i in (0..simd_len).step_by(N) {
         // Load chunks of data into SIMD vectors
-        let w_chunk = Simd::from_slice(&w[i..i+N]);
-        let g_chunk = Simd::from_slice(&g[i..i+N]);
-        let grad_chunk = Simd::from_slice(&gradient[i..i+N]);
+        let w_chunk = Simd::from_slice(&w[i..i + N]);
+        let g_chunk = Simd::from_slice(&g[i..i + N]);
+        let grad_chunk = Simd::from_slice(&gradient[i..i + N]);
 
         // Update accumulated squared gradient
         let new_g_chunk = g_chunk + grad_chunk * grad_chunk;
-        new_g_chunk.copy_to_slice(&mut g[i..i+N]);
+        new_g_chunk.copy_to_slice(&mut g[i..i + N]);
 
         // Compute update
         let lr = Simd::splat(learning_rate);
@@ -196,7 +196,7 @@ where
 
         // Apply update to weights
         let new_w_chunk = w_chunk - update;
-        new_w_chunk.copy_to_slice(&mut w[i..i+N]);
+        new_w_chunk.copy_to_slice(&mut w[i..i + N]);
     }
 
     // Handle remaining elements with scalar operations

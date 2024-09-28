@@ -30,7 +30,6 @@ use core::simd::prelude::*;
 use grpc::sniper::EmbeddingLookupOption;
 use likely_stable::{likely, unlikely};
 use log::{error, info};
-use util::simd::sum_f32_vectors_simd_flex;
 use std::collections::VecDeque;
 use std::hash::RandomState;
 use std::ops::Deref;
@@ -40,6 +39,7 @@ use util::histogram;
 use util::histogram::record_time;
 use util::histogram::Histogram;
 use util::histogram::WithHistogram;
+use util::simd::sum_f32_vectors_simd_flex;
 
 use coarsetime::{Duration, Instant};
 
@@ -61,6 +61,8 @@ use util::histogram::HistogramType;
 
 use util::simd::adagrad_update;
 use util::simd::sum_f32_vectors_simd_no_copy;
+
+use crate::arc_unsafe_vec::ArcUnsafeVec;
 
 /// Sparse Parameter for sparse signs.
 pub struct SparseParameter {
@@ -162,13 +164,23 @@ struct BatchMessage {
 #[derive(Default)]
 pub struct EmbeddingLookupResult {
     /// Embedding sum of a batch.
-    pub values: Vec<Vec<f32>>,
+    pub values: ArcUnsafeVec<Vec<f32>>,
 
     /// Time spend in milliseconds.
     pub time_spends: u64,
 
     /// Total signs.
     pub total_signs: usize,
+}
+
+impl EmbeddingLookupResult {
+    pub fn with_values_capacity(capacity: usize) -> Self {
+        Self {
+            values: ArcUnsafeVec::with_capacity(capacity),
+            time_spends: 0,
+            total_signs: 0,
+        }
+    }
 }
 
 /// Embedding parameters.
@@ -568,8 +580,7 @@ impl Embedding {
 
     /// Get embedding lookup result for field and batch_id, sum the weights of signs.
     ///
-    /// The result is a one-dimension tensor, the total length is batch_size * embedding_size.
-    /// The content is sum of weight of each item concat together.
+    /// The result is write directly into `buffer` based on varname index.
     ///
     /// For example:
     ///
@@ -583,11 +594,10 @@ impl Embedding {
         field: i32,
         batch_id: u64,
         batch_size: usize,
-    ) -> Result<EmbeddingLookupResult> {
-        let mut res = EmbeddingLookupResult::default();
-
-        res.values.resize(batch_size, vec![0.0; self.embedding_size]);
-
+        buffer: ArcUnsafeVec<f32>,
+        total_dim: usize,
+        dim_acc: usize,
+    ) -> Result<()> {
         let mut last = Instant::now();
 
         // let zeros = vec![0.0; 16];
@@ -619,19 +629,30 @@ impl Embedding {
         let item_indexes = &batch_message.item_indexes;
 
         let total = signs.len();
-        res.total_signs = total;
+
+        let mut last_sum_time = Instant::now();
 
         // get embedding parameter by sign and sum.
         for i in 0..total {
             let item_index = item_indexes[i] as usize;
 
-            if unlikely(item_index > res.values.len()) {
+            // The start position of the item in buffer.
+            let start = item_index * total_dim + dim_acc; 
+
+            // The end position of the item in buffer.
+            let end = start + self.embedding_size;
+
+            // Check if out of range.
+            if unlikely(start >= buffer.len() || end > buffer.len()) {
                 error_bail!(
-                    "out of range, item_index: {}, res.values.len(): {}",
-                    item_index,
-                    res.values.len(),
+                    "out of range, start: {}, end: {}, buffer.len(): {}",
+                    start,
+                    end,
+                    buffer.len(),
                 );
             }
+
+            let mut cur_buffer = buffer.get_mut_slice(start, end);
 
             match self.store.get(&signs[i]) {
                 Some(x) => {
@@ -644,7 +665,10 @@ impl Embedding {
                     // Use simd to speedup.
                     // sum_f32_vectors_simd_no_copy::<16>(&mut simd_values[item_index], &x.weight);
                     // sum_f32_vectors_simd_mm256(&mut res.values[item_index], &x.weight[0..self.embedding_size]);
-                    sum_f32_vectors_simd_flex::<8>(&mut res.values[item_index], &x.weight[0..self.embedding_size]);
+                    sum_f32_vectors_simd_flex::<8>(
+                        &mut cur_buffer,
+                        &x.weight[0..self.embedding_size],
+                    );
                 }
                 None => {
                     // If not found, insert new SparseParameter into store.
@@ -652,6 +676,15 @@ impl Embedding {
                         .insert(signs[i], SparseParameter::new(self.embedding_size));
                 }
             }
+        }
+
+        {
+            let mut histogram = self.histogram.lock().unwrap();
+            record_time(
+                &mut histogram,
+                HistogramType::PsEmbeddingLookupSum,
+                &mut last_sum_time,
+            );
         }
 
         // Copy the sum result.
@@ -662,8 +695,6 @@ impl Embedding {
         // After lookup, push batch_message to lookup_queue for grad parameter updating later.
         self.push_lookup_queue(field, batch_id, batch_message)?;
 
-        res.time_spends = (Instant::now() - last).as_micros();
-
         {
             let mut histogram = self.histogram.lock().unwrap();
             record_time(
@@ -673,7 +704,7 @@ impl Embedding {
             );
         }
 
-        Ok(res)
+        Ok(())
     }
 
     /// Update the gradient parameters to store.

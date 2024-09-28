@@ -1,7 +1,7 @@
-use anyhow::{Result, anyhow};
-use grpc::sniper::sniper_client::SniperClient;
-use log::{info, error};
 use anyhow::bail;
+use anyhow::{anyhow, Result};
+use grpc::sniper::sniper_client::SniperClient;
+use log::{error, info};
 
 use likely_stable::{likely, unlikely};
 
@@ -35,4 +35,3 @@ pub async fn get_ps_client(
         Err(err) => Err(err.into()),
     }
 }
-

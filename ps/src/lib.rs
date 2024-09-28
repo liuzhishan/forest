@@ -15,6 +15,7 @@ pub mod request_handler;
 pub use request_handler::Ps;
 
 mod arc_unsafe_vec;
+mod arc_unsafe_slice;
 mod dense;
 mod embedding;
 mod env;

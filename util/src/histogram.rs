@@ -56,6 +56,8 @@ pub enum HistogramType {
     PsPull,
     PsPush,
     PsEmbeddingLookup,
+    PsEmbeddingLookupNewVec,
+    PsEmbeddingLookupSum,
     PsEmbeddingLookupOneVariable,
     PsEmbeddingLookupDispatch,
     PsEmbeddingLookupWaiting,
@@ -594,7 +596,7 @@ impl Histogram {
     pub fn add(&mut self, histogram_type: HistogramType, v: u64) {
         let enum_int: usize = histogram_type.into();
 
-        if enum_int < self.details.len() {
+        if likely(enum_int < self.details.len()) {
             self.details[enum_int].add(v);
 
             let detail = &self.details[enum_int];

@@ -6,8 +6,8 @@ use std::mem::size_of;
 
 use std::simd::LaneCount;
 use std::simd::SimdElement;
-use std::simd::SupportedLaneCount;
 use std::simd::StdFloat;
+use std::simd::SupportedLaneCount;
 
 use std::ops::{Add, AddAssign};
 
@@ -17,20 +17,20 @@ use log::{error, info};
 
 use rand::Rng;
 use rand::RngCore;
-use util::simd::sum_f32_vectors_simd_avx512;
-use util::simd::sum_f32_vectors_simd_mm256;
-use util::simd::sum_f32_vectors_simd_flex;
-use util::simd::sum_f32_vectors_simd_no_copy;
+use std::any::type_name;
 use std::sync::Once;
 use std::sync::{Arc, Mutex};
-use std::any::type_name;
+use util::simd::sum_f32_vectors_simd_avx512;
+use util::simd::sum_f32_vectors_simd_flex;
+use util::simd::sum_f32_vectors_simd_mm256;
+use util::simd::sum_f32_vectors_simd_no_copy;
 
 use anyhow::bail;
 use anyhow::Result;
 
 use std::io::{BufRead, BufReader, Read, Write};
 
-use util::{error_bail, init_log, Flags, gen_random_f32_list};
+use util::{error_bail, gen_random_f32_list, init_log, Flags};
 
 static INIT: Once = Once::new();
 
@@ -92,7 +92,9 @@ where
 /// Time a function in `milliseconds`.
 #[inline]
 fn time_loop<F>(n: usize, f: F) -> u64
-    where F: Fn() -> () {
+where
+    F: Fn() -> (),
+{
     let now = Instant::now();
 
     for i in 0..n {
@@ -112,13 +114,16 @@ fn run_normal_sum(n: usize, a: &mut Vec<f32>, b: &Vec<f32>) {
 
     let time_spend = (Instant::now() - now).as_millis();
 
-    info!("normal sum time spend: {} milliseconds, count: {}", time_spend, n);
+    info!(
+        "normal sum time spend: {} milliseconds, count: {}",
+        time_spend, n
+    );
 }
 
 fn run_simd_sum_flex<const N: usize>(n: usize, a: &mut Vec<f32>, b: &Vec<f32>)
 where
     LaneCount<N>: SupportedLaneCount,
-    Simd<f32, N>: Add + AddAssign
+    Simd<f32, N>: Add + AddAssign,
 {
     let now = Instant::now();
 
@@ -173,8 +178,7 @@ fn run_simd_sum_f32_mm256(n: usize, a: &mut Vec<f32>, b: &Vec<f32>) {
 
     info!(
         "run_simd_sum_f32_mm256, use mm256 directly, sum time spend: {} milliseconds, count: {}",
-        time_spend,
-        n
+        time_spend, n
     );
 }
 
@@ -189,8 +193,7 @@ fn run_simd_sum_f32_avx512(n: usize, a: &mut Vec<f32>, b: &Vec<f32>) {
 
     info!(
         "run_simd_sum_f32_avx512, user avx512, sum time spend: {} milliseconds, count: {}",
-        time_spend,
-        n
+        time_spend, n
     );
 }
 

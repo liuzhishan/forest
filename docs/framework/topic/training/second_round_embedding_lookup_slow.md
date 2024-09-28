@@ -1,84 +1,12 @@
-# training
-
-## ps 添加 lru
-
-使用 `VecDeque` 和 `DashMap` 结合的方式实现 `lru`。
-
-## `c++ 版本` `batch` 数据速度
-
-相同的资源情况下速度能到 `243848 examples/sec`, 特征一样，不过数据是拼好的 `batch`。
-
-    [1,0]<stderr>:2024-09-21 10:28:35,027 - INFO [hooks.py:465 - after_run] - step 9600, auc = 0.8267, loss = 0.2872257071, prob_mean: 0.109512, real_mean: 0.125947, (238.1 it/sec; 243848.0 examples/sec)
-    [1,0]<stderr>:2024-09-21 10:28:35,456 - INFO [hooks.py:465 - after_run] - step 9700, auc = 0.8267, loss = 0.2872743337, prob_mean: 0.109527, real_mean: 0.125963, (232.8 it/sec; 238371.1 examples/sec)
-    [1,0]<stderr>:2024-09-21 10:28:35,889 - INFO [hooks.py:465 - after_run] - step 9800, auc = 0.8267, loss = 0.2872754446, prob_mean: 0.109525, real_mean: 0.125965, (231.1 it/sec; 236693.9 examples/sec)
-    [1,0]<stderr>:2024-09-21 10:28:36,313 - INFO [hooks.py:465 - after_run] - step 9900, auc = 0.8267, loss = 0.2872792002, prob_mean: 0.109525, real_mean: 0.125968, (235.6 it/sec; 241291.7 examples/sec)
-    [1,0]<stderr>:2024-09-21 10:28:36,739 - INFO [hooks.py:465 - after_run] - step 10000, auc = 0.8266, loss = 0.2873227067, prob_mean: 0.109530, real_mean: 0.125983, (234.9 it/sec; 240575.3 examples/sec)
-    
-    
-查看耗时监控如下
-
-    [1,0]<stdout>:[2024-09-21 10:27:34.875] [info] [run_status.cc:72] [RunStatus] OpsEmbeddingLookup statistics => count: 757  P50: 27567.438692  P95: 32672.547684  P99: 39838.000000  Max: 39838.000000
-    [1,0]<stdout>:OpsPushGrad statistics => count: 758  P50: 7128.000000  P95: 9629.400000  P99: 9851.746667  Max: 10258.000000
-    [1,0]<stdout>:OpsReadSample statistics => count: 757  P50: 3972.443182  P95: 302995.000000  P99: 302995.000000  Max: 302995.000000
-
-    [1,0]<stdout>:[2024-09-21 10:28:04.876] [info] [run_status.cc:72] [RunStatus] OpsEmbeddingLookup statistics => count: 2612  P50: 28552.437902  P95: 44828.169014  P99: 48997.558685  Max: 50970.000000
-    [1,0]<stdout>:OpsReadSample statistics => count: 2616  P50: 4062.656904  P95: 6443.281853  P99: 11396.500000  Max: 298651.000000
-    [1,0]<stdout>:[2024-09-21 10:28:34.876] [info] [run_status.cc:72] [RunStatus] OpsEmbeddingLookup statistics => count: 6952  P50: 28703.185841  P95: 45343.420016  P99: 48266.000000  Max: 48266.000000
-    [1,0]<stdout>:OpsReadSample statistics => count: 6956  P50: 4365.349076  P95: 6430.344002  P99: 7487.526316  Max: 32105.000000
-    
-重新跑了一遍，速度有些差异，可能和集群跑的任务有关
-
-速度
-
-    [1,0]<stderr>:2024-09-24 20:51:40,494 - INFO [hooks.py:465 - after_run] - step 18900, auc = 0.8761, loss = 0.1924512684, prob_mean: 0.121220, real_mean: 0.101562, (193.4 it/sec; 198036.4 examples/sec)
-    [1,0]<stderr>:2024-09-24 20:51:41,002 - INFO [hooks.py:465 - after_run] - step 19000, auc = 0.8761, loss = 0.2136482298, prob_mean: 0.139329, real_mean: 0.103516, (197.2 it/sec; 201916.2 examples/sec)
-    [1,0]<stderr>:2024-09-24 20:51:41,503 - INFO [hooks.py:465 - after_run] - step 19100, auc = 0.8761, loss = 0.1577771753, prob_mean: 0.084985, real_mean: 0.074219, (199.4 it/sec; 204152.6 examples/sec)
-    [1,0]<stderr>:2024-09-24 20:51:42,020 - INFO [hooks.py:465 - after_run] - step 19200, auc = 0.8762, loss = 0.1820228547, prob_mean: 0.102443, real_mean: 0.079102, (193.3 it/sec; 197945.0 examples/sec)
-    [1,0]<stderr>:2024-09-24 20:51:42,534 - INFO [hooks.py:465 - after_run] - step 19300, auc = 0.8762, loss = 0.1943198144, prob_mean: 0.106581, real_mean: 0.090820, (194.6 it/sec; 199262.9 examples/sec)
-    [1,0]<stderr>:2024-09-24 20:51:43,046 - INFO [hooks.py:465 - after_run] - step 19400, auc = 0.8762, loss = 0.1421866119, prob_mean: 0.096939, real_mean: 0.052734, (195.3 it/sec; 199998.4 examples/sec)
-
-
-`trainer` 监控
-
-    [1,0]<stdout>:OpsEmbeddingLookup statistics => count: 5508  P50: 27394.852941  P95: 44173.026316  P99: 56622.222222  Max: 363990.000000
-    [1,0]<stdout>:OpsPushGrad statistics => count: 5512  P50: 9640.076336  P95: 13799.932461  P99: 19276.981132  Max: 23315.000000
-    [1,0]<stdout>:OpsReadSample statistics => count: 5513  P50: 3959.264480  P95: 6492.352103  P99: 9530.824561  Max: 27105.000000
-
-`ps` 耗时监控如下
-
-
-    PsFeedSample statistics => count: 85098  P50: 85.895506  P95: 818.502277  P99: 1205.698832  Max: 2756.000000
-    PsEmbeddingLookup statistics => count: 5684  P50: 6928.621908  P95: 9640.070671  P99: 9881.088339  Max: 19403.000000
-    PsPushGrad statistics => count: 5683  P50: 8465.338310  P95: 12913.279570  P99: 13824.337243  Max: 24890.000000
-    PsFeedCached statistics => count: 85111  P50: 332.000000  P95: 340.000000  P99: 340.000000  Max: 340.000000
-    PsLookupCached statistics => count: 85061  P50: 27.978623  P95: 31.000000  P99: 31.000000  Max: 31.000000
-
-`hub` 耗时监控如下
-
-    HubReadSample statistics => count: 50  P50: 4.538462  P95: 28.000000  P99: 210000.000000  Max: 223220.000000
-    HubNext statistics => count: 214  P50: 64375.000000  P95: 5302804.000000  P99: 5302804.000000  Max: 5302804.000000
-    HubFeedSample statistics => count: 132  P50: 6780.000000  P95: 12658.181818  P99: 16035.000000  Max: 16035.000000
-    HubCountSamplePos statistics => count: 27416  P50: 1.000000  P95: 1.000000  P99: 1.000000  Max: 1.000000
-    HubCountSampleNeg statistics => count: 190724  P50: 1.000000  P95: 1.000000  P99: 1.000000  Max: 1.000000
-    HubBatchProcessor statistics => count: 194  P50: 3030.434783  P95: 7634394.000000  P99: 7634394.000000  Max: 7634394.000000
-
-
-### 训练资源
-
-- `trainer`: 1 T4 GPU, 30 core, 60G Mem, 1 副本。
-- `ps`: 0 GPU, 60 core, 200G Mem, 4 副本。
-- `hub`: 0 GPU, 20 core, 50G Mem, 4 副本。
-
+# 第二轮排查：EmbeddingLookup 慢
 
 ## 训练速度慢
 
-### 第一轮排查
-
-#### 现在是读取单条样本，`hub` 里拼 `batch`
+### 现在是读取单条样本，`hub` 里拼 `batch`
 
 之前是离线拼好的 `batch`，会导致一些速度差异，`batch` 数据很快。
 
-#### 是否和 `lru` 有关
+### 是否和 `lru` 有关
 
 添加 `lru` 后速度变慢。
 
@@ -122,8 +50,7 @@
 
 说明和 `lru` 没关系，就是 `EmbeddingLookup` 慢, 比 `PushGrad` 和 `ReadSample` 慢几个数量级。
 
-
-#### `EmbeddingLookup` 时对整个 `EmbeddingManager` 加锁，锁的粒度太粗。
+### `EmbeddingLookup` 时对整个 `EmbeddingManager` 加锁，锁的粒度太粗。
 
 目前的实现如下, 在 `tokio::spawn` 每个任务获取 `embedding_manager.clone()`, 在进行其他操作。
 这样每个线程在运行时锁是加在整个 `embedding_manager` 上的，导致其他 `var` 不能同时访问。
@@ -166,13 +93,13 @@
     }
 
 
-##### 怎样将锁加在每个 `Embedding` 上 ?
+#### 怎样将锁加在每个 `Embedding` 上 ?
 
-###### 使用 `Vec` 保存 `Embedding` ?
+##### 使用 `Vec` 保存 `Embedding` ?
 
-###### `Rayon` ?
+##### `Rayon` ?
 
-###### `Arc<Vec>` ?
+##### `Arc<Vec>` ?
 
 `Arc` 表示 `Atomically Reference Counted`。
 
@@ -200,7 +127,7 @@
 可以看出，`EmbeddingLookup` 速度提高了一个数量级，但是 `ReadSample` 速度变慢了。可能和 `ps FeedSample` 有关。 
 
 
-#### `hash` 函数
+### `hash` 函数
 
 多个 `ps` 时经常报错 `EmbeddingLookup failed`, 经排查是因为不同的 `variable` 分配到不同的 `ps` 是根据变量名 `hash` 后对 ps
 总数取模决定的，而 `rust`, `c++`, `python` 中使用的 `hash` 函数不同。`rust` 中默认使用的是 `SipHash13`, `c++` 中使用的是
@@ -231,7 +158,7 @@
     [1,0]<stderr>:2024-09-17 15:03:41,350 - INFO [hooks.py:237 - after_run] - 2024-09-17 15:03:41.350390: step 347, xentropy_mean:0 = 0.26466653 (0.7 it/sec; 713.2 examples/sec)
     [1,0]<stderr>:2024-09-17 15:03:41,350 - INFO [hooks.py:237 - after_run] - 2024-09-17 15:03:41.350441: step 347, prob_mean:0 = 0.10305227 (0.7 it/sec; 713.2 examples/sec)
 
-#### 排查 `EmbeddingLookup` 耗时
+### 排查 `EmbeddingLookup` 耗时
 
 添加统计耗时直方图逻辑 `Histogram`, 对 `EmbeddingLookup` 中的步骤进行计时。
 
@@ -266,7 +193,7 @@
 - `ps` 共有 `60` 核，按说有足够多的线程来同时执行并发任务。看起来像是实际单线程在运行。会不会实际就是单线程在运行？
 - 看起来是各别比较慢的 `sparse` 变量导致耗时增加，可能是各别 `sparse` 特征 `sign` 明显比其他特征多，导致查询慢。
 
-#### 实际并发数
+### 实际并发数
 
 搜索 `rust tonic thread number`, 发现了以下一些解释。
 
@@ -282,7 +209,7 @@
 并且，从请求个数和请求的逻辑来看，主要的时间还是在处理逻辑上，接收请求应该不会成为瓶颈。问题可能还是出在处理逻辑慢。
 
 
-#### 比较慢的 `sparse` 变量
+### 比较慢的 `sparse` 变量
 
 统计同一个 `batch_id` 内个变量的耗时，结果如下:
 
@@ -371,7 +298,7 @@
 有没有办法不加锁？因为 `sparse` 参数很稀疏，两个 `batch` 更新的参数可能只有少部分是重合的。
 因此如果不加锁，直接读取也写入，就会快很多。
 
-#### 使用 `SyncUnsafeCell` 不加锁
+### 使用 `SyncUnsafeCell` 不加锁
 
 改为 `SyncUnsafeCell` 后速度快了很多, `embedding_11` 一次查询在 `1s` 左右，相比之前提高了 5 倍。
 
@@ -412,7 +339,7 @@
     [1,0]<stderr>:OpsPushGrad statistics => count: 306  P50: 41816.949153  P95: 49752.203390  P99: 62416.000000  Max: 62416.000000
     [1,0]<stderr>:OpsReadSample statistics => count: 306  P50: 12345.180723  P95: 21159.493671  P99: 27022.000000  Max: 27022.000000
 
-#### 增加资源 
+### 增加资源 
 
 `ps` 由 `2` 个增加到 `8` 个，`hub` 由 `1` 增加到 `2` 个。速度和 `2 ps` 差不多。
 
@@ -431,7 +358,7 @@
 查看资源利用率监控，发现 `hub` cpu 利用率都不高，只有 `20%`, `ps` 不均匀，`ps 0` cpu 利用率 `59%`,
 其他 `ps` 只有 `10%` 左右。
 
-#### 替换最慢的特征
+### 替换最慢的特征
 
 `embedding_11` 比其他特征 `sign` 个数多了一个数量级, 将其替换为其他同样规模的特征。`OpsEmbeddingLookup` 耗时确实变小
 了，只有原来的 `1/4`, 但是训练速度能到 `3.7万每秒`, 还是有差距。
@@ -454,12 +381,12 @@
     [1,0]<stderr>:2024-09-19 00:19:14,572 - INFO [hooks.py:237 - after_run] - 2024-09-19 00:19:14.572929: step 16000, real_mean:0 = 0.13476562 (36.0 it/sec; 36845.3 examples/sec)
 
 
-#### 实验 `auto_shard`
+### 实验 `auto_shard`
 
 
-#### 底层实现
+### 底层实现
 
-##### tokio scheduler
+#### tokio scheduler
 
 [Making the Tokio scheduler 10x faster](https://tokio.rs/blog/2019-10-scheduler)
 [How Tokio schedule tasks: A hard Lesson learnt](https://rustmagazine.org/issue-4/how-tokio-schedule-tasks/)
@@ -473,14 +400,14 @@ Scheduler strategy:
 - work-stealing scheduler.
 
 
-#### lock free
+### lock free
 
 [Low Latency in Rust with Lock-Free Data Structures](https://www.linkedin.com/pulse/low-latency-rust-lock-free-data-structures-luis-soares-m-sc--va5xf)
 [Exploring lock-free Rust 1: Locks](https://morestina.net/blog/742/exploring-lock-free-rust-1-locks)
 [lockfree](https://crates.io/crates/lockfree)
 
 
-### 经过第一轮排查与优化后的理论速度
+## 分析与总结
 
     [1,0]<stderr>:I0919 00:19:13.452296   661 run_status.cc:71] [RunStatus]: OpsEmbeddingLookup statistics => count: 1067  P50: 206292.481977  P95: 245851.699279  P99: 249368.074150  Max: 273263.000000
     [1,0]<stderr>:OpsPushGrad statistics => count: 1067  P50: 42420.000000  P95: 49681.558567  P99: 59878.000000  Max: 59878.000000
@@ -528,554 +455,4 @@ Scheduler strategy:
     [1,0]<stderr>:2024-09-19 10:11:39,212 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:39.212470: step 4400, prob_mean:0 = 0.10385576 (29.6 it/sec; 30350.5 examples/sec)
     [1,0]<stderr>:2024-09-19 10:11:39,213 - INFO [hooks.py:237 - after_run] - 2024-09-19 10:11:39.213134: step 4400, real_mean:0 = 0.10449219 (29.6 it/sec; 30344.9 examples/sec)
     [1,0]<stderr>:2024-09-19 10:11:39,213 - INFO [trainer.py:300 - train] - current lr: 0.050000
-
-
-### 第二轮排查 
-
-#### `feed_queue` 中各步骤的耗时
-
-将请求 `hub`, `ReadSample`, `EmbeddingLookup`, `push to queue` 等步骤都加上日志, `thread_id 0` 结果如下, 可以
-看出，大部分 `ReadSample` 请求都没有获取到数据。而如果从 `hub` 获取到数据，后面的 `EmbeddingLookup` 耗时与监控一致。
-
-
-说明瓶颈是 `hub` ?
-
-
-    [1,0]<stderr>:2024-09-20 13:48:34.646883: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.646898: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.650838: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.650848: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.654586: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.654607: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.658092: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.658129: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.661794: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.661806: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.665330: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.665343: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.669174: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.669191: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.672761: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.672774: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.676267: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.676285: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.679938: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.679953: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.683477: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.683485: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.687396: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.687403: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.690899: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.690909: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.694596: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.694602: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.698400: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.698407: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.701864: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.701871: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.705676: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.705685: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.709361: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.709374: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.713283: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.713297: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.716862: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.716869: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.726340: I trainer/core/operators/kernels/feed_queue.cc:258] trainer thread id: 0, after read sample, start check dim
-    [1,0]<stderr>:2024-09-20 13:48:34.726352: I trainer/core/operators/kernels/feed_queue.cc:277] trainer thread id: 0, after check dim, start embedding lookup
-    [1,0]<stderr>:2024-09-20 13:48:34.887918: I trainer/core/operators/kernels/feed_queue.cc:451] trainer thread id: 0, after embedding lookup, start check embedding result
-    [1,0]<stderr>:2024-09-20 13:48:34.887940: I trainer/core/operators/kernels/feed_queue.cc:468] trainer thread id: 0, after check embedding result, start push to queue
-    [1,0]<stderr>:2024-09-20 13:48:34.898154: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
-    [1,0]<stderr>:2024-09-20 13:48:34.898168: I trainer/core/operators/kernels/feed_queue.cc:151] trainer thread id: 0, start get next_hub
-    [1,0]<stderr>:2024-09-20 13:48:34.898173: I trainer/core/operators/kernels/feed_queue.cc:202] trainer thread id: 0, start read sample
-    [1,0]<stderr>:2024-09-20 13:48:34.907967: I trainer/core/operators/kernels/feed_queue.cc:258] trainer thread id: 0, after read sample, start check dim
-    [1,0]<stderr>:2024-09-20 13:48:34.907981: I trainer/core/operators/kernels/feed_queue.cc:277] trainer thread id: 0, after check dim, start embedding lookup
-    [1,0]<stderr>:2024-09-20 13:48:35.106380: I trainer/core/operators/kernels/feed_queue.cc:451] trainer thread id: 0, after embedding lookup, start check embedding result
-    [1,0]<stderr>:2024-09-20 13:48:35.106403: I trainer/core/operators/kernels/feed_queue.cc:468] trainer thread id: 0, after check embedding result, start push to queue
-
-
-#### 增加 `hub` 个数
-
-从 `2` 增加到 `4`。
-
-有一点上涨，能到 `38400 exampls/sec`, 但是与预期还是有差距。
-
-    [1,0]<stderr>:2024-09-21 09:21:46,800 - INFO [hooks.py:269 - after_run] - 2024-09-21 09:21:46.800022: step 1300, auc = 0.6715 (37.5 it/sec; 38399.8 examples/sec)
-    [1,0]<stderr>:2024-09-21 09:21:46,800 - INFO [hooks.py:237 - after_run] - 2024-09-21 09:21:46.800209: step 1300, xentropy_mean:0 = 0.30443680 (37.5 it/sec; 38400.1 examples/sec)
-    [1,0]<stderr>:2024-09-21 09:21:46,800 - INFO [hooks.py:237 - after_run] - 2024-09-21 09:21:46.800266: step 1300, prob_mean:0 = 0.08712210 (37.5 it/sec; 38400.1 examples/sec)
-    [1,0]<stderr>:2024-09-21 09:21:46,800 - INFO [hooks.py:237 - after_run] - 2024-09-21 09:21:46.800310: step 1300, real_mean:0 = 0.09960938 (37.5 it/sec; 38400.1 examples/sec)
-    
-
-查看 `after push to queue` 日志结果如下:
-
-    # grep '09:22:27' log/dsp_ctr_lzs_test_v6_2024_09_21_09_19_17.log | grep 'after push to queue'
-
-    [1,0]<stderr>:2024-09-21 09:22:27.053202: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 3, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.064763: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 2, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.076186: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 9, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.080873: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 4, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.081193: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 6, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.088784: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 5, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.102404: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 8, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.165555: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 1, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.166353: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.200455: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 7, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.305205: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 8, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.310202: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 5, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.333078: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 3, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.339847: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 4, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.342972: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 2, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.363182: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.373962: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 9, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.384125: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 6, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.431764: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 1, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.485752: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 7, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.565343: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 8, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.572960: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 5, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.607563: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 6, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.608794: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 4, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.611064: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 2, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.615670: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.633463: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 3, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.638674: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 9, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.705027: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 1, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.741057: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 7, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.855039: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 4, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.882023: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 5, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.884056: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 8, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.888113: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 6, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.888182: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 2, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.898029: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 9, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.898356: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 0, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.937386: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 3, after push to queue
-    [1,0]<stderr>:2024-09-21 09:22:27.962224: I trainer/core/operators/kernels/feed_queue.cc:489] trainer thread id: 1, after push to queue
-
-
-    grep '09:22:27' log/dsp_ctr_lzs_test_v6_2024_09_21_09_19_17.log | grep 'after push to queue' | wc -l
-    
-    39
-    
-去掉 `trainer` 日志，能到 `49772 examples/sec`。
-
-    [1,0]<stderr>:OpsEmbeddingLookup statistics => count: 1440  P50: 209488.636364  P95: 246306.818182  P99: 249579.545455  Max: 264189.000000
-    [1,0]<stderr>:OpsPushGrad statistics => count: 1440  P50: 42283.000000  P95: 49962.800875  P99: 70073.529412  Max: 91791.000000
-    [1,0]<stderr>:OpsReadSample statistics => count: 1438  P50: 13212.349914  P95: 25916.822430  P99: 31830.093458  Max: 39568.000000
-
-    [1,0]<stderr>:2024-09-21 14:08:46,568 - INFO [hooks.py:264 - after_run] - 2024-09-21 14:08:46.568055: step 3600, auc = 0.6713 (48.6 it/sec; 49772.2 examples/sec)
-    [1,0]<stderr>:2024-09-21 14:08:46,568 - INFO [hooks.py:232 - after_run] - 2024-09-21 14:08:46.568233: step 3600, xentropy_mean:0 = 0.29283547 (48.6 it/sec; 49772.1 examples/sec)
-    [1,0]<stderr>:2024-09-21 14:08:46,568 - INFO [hooks.py:232 - after_run] - 2024-09-21 14:08:46.568289: step 3600, prob_mean:0 = 0.08826549 (48.6 it/sec; 49772.0 examples/sec)
-    [1,0]<stderr>:2024-09-21 14:08:46,568 - INFO [hooks.py:232 - after_run] - 2024-09-21 14:08:46.568333: step 3600, real_mean:0 = 0.08984375 (48.6 it/sec; 49772.0 examples/sec)
-
-
-#### 增加 `trainer` 预取线程数
-
-将 `trainer` 预取线程数从 `10` 增加到 `20`, 速度和之前差不多, 离预期还有距离。
-
-    [1,0]<stderr>:2024-09-21 09:29:01,576 - INFO [hooks.py:269 - after_run] - 2024-09-21 09:29:01.576279: step 15700, auc = 0.6591 (37.0 it/sec; 37902.6 examples/sec)
-    
-耗时监控如下, 可以看出, `EmbeddingLookup` 耗时增加约 `1` 倍, `PushGrad` 基本不变, `ReadSample` `p50` 基本不变，但是 `p95` 增加约 `1` 倍。
-
-    [1,0]<stderr>:I0921 09:38:38.752875   786 run_status.cc:71] [RunStatus]: OpsEmbeddingLookup statistics => count: 1316  P50: 462387.931034  P95: 559386.206897  P99: 568008.275862  Max: 576471.000000
-    [1,0]<stderr>:OpsPushGrad statistics => count: 1318  P50: 41835.173502  P95: 49786.829653  P99: 68785.714286  Max: 75602.000000
-    [1,0]<stderr>:OpsReadSample statistics => count: 1316  P50: 15726.872247  P95: 44936.956522  P99: 49800.434783  Max: 92753.000000
-    [1,0]<stderr>:I0921 09:39:08.753228   786 run_status.cc:71] [RunStatus]: OpsEmbeddingLookup statistics => count: 1313  P50: 462747.205503  P95: 559274.720550  P99: 567854.944110  Max: 568404.000000
-    [1,0]<stderr>:OpsPushGrad statistics => count: 1308  P50: 41818.000000  P95: 49607.075472  P99: 65916.666667  Max: 68691.000000
-    [1,0]<stderr>:OpsReadSample statistics => count: 1310  P50: 13814.439655  P95: 31207.865169  P99: 41405.555556  Max: 99806.000000
-
-资源利用率:
-
-- `hub`: cpu 利用率约 `30%`。
-- `ps`: `ps0` 利用率约为 `60%`,  不均匀，其他由于监控问题看不到。
-
-### 经过第二轮排查与优化后与 `c++` 版本对比
-
-`c++` 版本速度能到 `240000 examples/sec`, `rust` 版本约为 `40000 examples/sec`, 相差 `6` 倍。
-
-对比 `rust` `38000 examples/sec` 版本统计耗时
-
-    [1,0]<stderr>:OpsReadSample statistics => count: 1108  P50: 9651.190476  P95: 14241.509434  P99: 20931.320755  Max: 46424.000000
-    [1,0]<stderr>:OpsEmbeddingLookup statistics => count: 1106  P50: 261759.868421  P95: 310601.000000  P99: 310601.000000  Max: 310601.000000
-    [1,0]<stderr>:OpsPushGrad statistics => count: 1107  P50: 41825.000000  P95: 49584.461967  P99: 65456.896552  Max: 71762.000000
-
-`c++` 版本耗时统计如下。
-
-    [1,0]<stdout>:OpsReadSample statistics => count: 757  P50: 3972.443182  P95: 302995.000000  P99: 302995.000000  Max: 302995.000000
-    [1,0]<stdout>:OpsEmbeddingLookup statistics => count: 757  P50: 27567.438692  P95: 32672.547684  P99: 39838.000000  Max: 39838.000000
-    [1,0]<stdout>:OpsPushGrad statistics => count: 758  P50: 7128.000000  P95: 9629.400000  P99: 9851.746667  Max: 10258.000000
-    
-
-`c++` 版本与 `rust` 版本对比如下。
-备注: 计时单位为微妙。
-
-| 统计项          | rust p50 | rust p95 | c++ p50 | c++ p95 | p50 speedup | p95 speedup |
-|-----------------|----------|----------|---------|---------|-------------|-------------|
-| ReadSample      | 9,651    | 14,241   | 3,972   | 302,995 | 2.43x       | 0.05x       |
-| EmbeddingLookup | 261,759  | 310,601  | 27,567  | 32,672  | 9.50x       | 9.51x       |
-| PushGrad        | 41,825   | 49,584   | 7,128   | 9,626   | 5.87x       | 5.15x       |
-
-从主要的三项耗时统计来看，`ReadSample` 有 `2.43x` 的差距，可能是因为 `c++` 版本读取的是 `batch` 数据,
-这种数据格式基本就是二进制的格式，直接按 `byte` 进行读取，速度非常快，而 `rust` 读取的是 `proto` 格式的
-单条样本格式，还需要再拼 `batch`，速度会有差异。后面会尝试一种更新的可能比 `batch` 数据更好的格式。
-
-更大的差异在于 `ps` 上的速度差异。从耗时可以看出，不管是 `c++` 版本还是 `rust` 版本，主要瓶颈都在
-`EmbeddingLookup` 这一步。`c++` 版本快了 `9` 倍多。`ps` 上涉及的计算逻辑比较多，而且涉及到各种多线程
-并发访问的问题，可能还是和具体实现有关系。
-
-理论上 `rust` 的性能应该能和 `c++` 到统一水平, 实际 `rust` 差这么多有点出乎意料。
-
-从实现上看差异比较大的主要是三个: 
-
-- 保存参数的实现：
-    - `rust`: 采用 `Vec<DashMap>` 来保存参数，固定分片，`shard` 会有锁，内部保存的数据是 `lock free`,
-    并且 `map` 采用 `swiss table` 的思路实现，利用 `simd` 加速。
-    - `c++`: 基于 `circular buffer` 自己实现了 `lru`，结合 `folly concurrent hashmap` 手动管理内存。
-    这种实现会预分配一大片内存用户保存参数，不会有 `malloc` 和 `delete` 带来的问题。保存的数据也是
-    `lock free`。
-- `scheduler`:
-    - `rust`: 直接使用了 `tokio` 提供的 `scheduler` 来调度并发任务。仔细看了 `tokio scheduler` 的原理，
-    感觉和 `c++` 中自己实现的 `scheduler` 思路类似， 都是多个 `processors`, 每个都有自己的 `queue`,
-    而且 `tokio` 的实现更完善一些，不应该有这么大差异。
-    - `c++`: 自己实现的 `scheduler`。 思路是多个 `processors`, 每个都有自己的 `queue`。
-- `grpc`:
-    - `rust`: 直接使用 `tonic` 框架。
-    - `c++`: 使用的是 `c++ grpc`, 同时封装了一些 `zero copy` 的优化。考虑到主要耗时的计算逻辑是
-    `Embedding` 参数的查询与更新，`grpc` 请求 `qps` 并不是很高，因此 `grpc` 请求这一因素应该影响不大。
-
-待仔细研究。
-
-TODO:
-- 仔细对比 `ps` 中的耗时监控。
-- 仔细对比 `map` 的单线程读写性能。
-- 仔细对比 `map` 的多线程读写性能。
-
-### 第三轮排查
-
-#### `simd` 加速
-
-突然想到 `c++` 版本中 `ps` `EmbeddingLookup` 与 `PushGrad` 都用了 `simd` 加速来计算 `sum`,  `sum` 是
-一个高频操作。利用 `__mm256` 系列指令同时计算 `8` 个 `float` 的运算结果。理论上有 `8` 倍的加速，好
-像和速度差异差不多。如果用 `__mm512` 系列则能够同时计算 `16` 个 `float`。
-
-`c++` 中实现如下
-
-    void Sum8FloatValues(float* dst, const float* src) {
-      __m256 m_dst = _mm256_loadu_ps(dst);
-      __m256 m_src = _mm256_loadu_ps(src);
-      __m256 m_val = _mm256_add_ps(m_dst, m_src);
-      _mm256_storeu_ps(dst, m_val);
-    }
-
-    void Sum(const float* src, float* dst, int32_t n) {
-      int32_t c = n / 8;
-      int32_t offset = 0;
-
-      for (int32_t i = 0; i < c; ++i) {
-        Sum8FloatValues(dst + offset, src + offset);
-        offset += 8;
-      }
-
-      while (offset < n) {
-        dst[offset] += src[offset];
-        ++offset;
-      }
-    }
-
-
-参考:
-- [Nine Rules for SIMD Acceleration of Your Rust Code (Part 1)](https://towardsdatascience.com/nine-rules-for-simd-acceleration-of-your-rust-code-part-1-c16fe639ce21)
-- [Nine Rules for SIMD Acceleration of your Rust Code (Part 2)](https://towardsdatascience.com/nine-rules-for-simd-acceleration-of-your-rust-code-part-2-6a104b3be6f3)
-
-使用 `simd` 需要 `rust nightly`, 按如下步骤安装
-
-    rustup install nightly
-    rustup update nightly
-    rustup override set nightly
-    
-    cargo update
-
-    cargo install cargo-simd-detect --force
-    cargo simd-detect
-    
-    export RUSTFLAGS="-C target-feature=+avx2"
-    
-    export RUSTFLAGS="-C target-cpu=native -C target-feature=+avx512f -C linker=gcc"
-    
-注意: 使用 `nightly` 编译会报如下错误，需要设置参数 `export RUSTFLAGS="-C linker=gcc"`
-
-    = note: rust-lld: error: sniper/target/debug/build/tensorflow-sys-a6e7af09a3d8a4cc/out/libtensorflow.so: invalid local symbol '_ZN9grpc_core7ExecCtx9exec_ctx_E' in global part of symbol table
-              collect2: error: ld returned 1 exit status
-              
-或者在 .cargo/config.toml 中设置
-
-    [target.x86_64-unknown-linux-gnu]
-    rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+avx512f", "-C", "linker=gcc"]
-
-#### 测试 `simd` 性能
-
-对比简单的 `32` 个 `f32` `sum` 性能, `Simd<f32, 32>` 表示 `32` 个 `float`, 再对比 `f32x4`, `f32x8`, `f32x16` 的结果。
-
-具体实现见: `util/tests/tests.rs` 中 `test_simd_sum`。
-
-结果如下，可以看出, 几种不同 `simd` 结构的速度差不多，相比普通的 `sum` 都有 `6` 倍多的加速。
-
-    2024-09-25T21:05:18 [INFO] util/tests/tests.rs:115 - normal sum time spend: 4007 milliseconds, count: 10000000
-    2024-09-25T21:05:31 [INFO] util/tests/tests.rs:131 - run_simd_sum_flex, copy to slice, f32x4 sum time spend: 12415 milliseconds, count: 10000000
-    2024-09-25T21:05:37 [INFO] util/tests/tests.rs:131 - run_simd_sum_flex, copy to slice, f32x8 sum time spend: 6764 milliseconds, count: 10000000
-    2024-09-25T21:05:41 [INFO] util/tests/tests.rs:131 - run_simd_sum_flex, copy to slice, f32x16 sum time spend: 4065 milliseconds, count: 10000000
-    2024-09-25T21:05:44 [INFO] util/tests/tests.rs:131 - run_simd_sum_flex, copy to slice, f32x32 sum time spend: 2399 milliseconds, count: 10000000
-    2024-09-25T21:05:45 [INFO] util/tests/tests.rs:156 - run_simd_sum_f32_no_copy, no copy, f32x16 sum time spend: 691 milliseconds, count: 10000000
-    2024-09-25T21:05:45 [INFO] util/tests/tests.rs:156 - run_simd_sum_f32_no_copy, no copy, f32x32 sum time spend: 705 milliseconds, count: 10000000
-    2024-09-25T21:05:50 [INFO] util/tests/tests.rs:174 - run_simd_sum_f32_mm256, use mm256 directly, sum time spend: 4533 milliseconds, count: 10000000
-    2024-09-25T21:05:55 [INFO] util/tests/tests.rs:190 - run_simd_sum_f32_avx512, user avx512, sum time spend: 4924 milliseconds, count: 10000000
-    
-不同计算逻辑加速比如下
-
-| Method                  | Time (ms) | Speedup |
-|-------------------------|-----------|---------|
-| normal sum              |      4007 |   1.00x |
-| simd f32x4 sum          |     12415 |   0.32x |
-| simd f32x8 sum          |      6764 |   0.59x |
-| simd f32x16 sum         |      4065 |   0.99x |
-| simd f32x32 sum         |      2399 |   1.67x |
-| simd no copy f32x16 sum |       691 |   5.80x |
-| simd no copy f32x32 sum |       705 |   5.68x |
-| simd mm256              |      4533 |   0.88x |
-| simd avx512             |      4924 |   0.81x |
-
-
-备注:
-- normal sum: 普通 sum。
-- simd f32x4 sum: 每次 sum 后将 `simd` 中的结果复制到原数组的 `slice` 中。
-- simd f32x8 sum: 每次 sum 后将 `simd` 中的结果复制到原数组的 `slice` 中。
-- simd f32x16 sum: 每次 sum 后将 `simd` 中的结果复制到原数组的 `slice` 中。
-- simd f32x32 sum: 每次 sum 后将 `simd` 中的结果复制到原数组的 `slice` 中。
-- simd no copy f32x16 sum: 直接将结果 `sum` 到第一个参数。
-- simd no copy f32x32 sum: 直接将结果 `sum` 到第一个参数。
-- simd mm256: 直接使用 `__mm256` 指令计算，不使用 `Simd`, 但是会将结果 `load` 到原数组。
-- simd avx512: 直接使用 `__avx512` 指令计算，不使用 `Simd`, 但是会将结果 `load` 到原数组。
-
-
-可以看出，没有复制的计算逻辑是最快的，比普通 `sum` 快了 `6` 倍。其他的 `simd` 中 `N` 越大，则速度越快。而直接使用
-指令计算的结果和普通 `sum` 差不多。
-
-`f32x4` 甚至慢了 `3` 倍。
-
-速度只涨到了 `61462 examples/sec`, 有点奇怪，`EmbeddingLookup` 耗时统计和之前比稍微快一点，`p95` 是 `164698`。但是和预期差很多。
-
-`ps` 上耗时监控如下
-
-    2024-09-24T19:53:19 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookup statistics in microseconds, total: 20000, p50: 115117, p95: 135947, p99: 137798, max: 135000
-    2024-09-24T19:53:19 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupOneVariable statistics in microseconds, total: 510000, p50: 13949, p95: 105329, p99: 131676, max: 140000
-    2024-09-24T19:53:19 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupDispatch statistics in microseconds, total: 20000, p50: 0, p95: 940, p99: 1042, max: 6000
-    2024-09-24T19:53:19 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupWaiting statistics in microseconds, total: 20000, p50: 115111, p95: 135946, p99: 137798, max: 135000
-
-
-##### 不使用 `simd` 的耗时监控如下
-
-`trainer` 耗时监控, 速度只有 `31856 examples/sec`, 有点奇怪，之前能到 `40000 examples/sec`。
-
-    [1,0]<stderr>:OpsEmbeddingLookup statistics => count: 945  P50: 311674.082314  P95: 373167.408231  P99: 375977.000000  Max: 375977.000000
-    [1,0]<stderr>:OpsPushGrad statistics => count: 946  P50: 42036.000000  P95: 51813.725490  P99: 64271.000000  Max: 64271.000000
-    [1,0]<stderr>:OpsReadSample statistics => count: 947  P50: 10260.135135  P95: 19540.625000  P99: 21908.125000  Max: 27457.000000
-    [1,0]<stderr>:2024-09-24 20:25:44,570 - INFO [hooks.py:264 - after_run] - 2024-09-24 20:25:44.570218: step 1300, auc = 0.6708 (31.1 it/sec; 31856.0 examples/sec)
-    [1,0]<stderr>:2024-09-24 20:25:44,570 - INFO [hooks.py:232 - after_run] - 2024-09-24 20:25:44.570601: step 1300, xentropy_mean:0 = 0.27869231 (31.1 it/sec; 31853.9 examples/sec)
-    [1,0]<stderr>:2024-09-24 20:25:44,570 - INFO [hooks.py:232 - after_run] - 2024-09-24 20:25:44.570662: step 1300, prob_mean:0 = 0.08517376 (31.1 it/sec; 31853.8 examples/sec)
-    [1,0]<stderr>:2024-09-24 20:25:44,570 - INFO [hooks.py:232 - after_run] - 2024-09-24 20:25:44.570710: step 1300, real_mean:0 = 0.08789062 (31.1 it/sec; 31853.7 examples/sec)
-    
-`ps` 耗时监控, 看起来和 `simd` 版本差不多，感觉是 `simd` 没生效。
-
-    2024-09-24T20:31:30 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookup statistics in microseconds, total: 10000, p50: 115100, p95: 135947, p99: 137800, max: 155999
-    2024-09-24T20:31:30 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupOneVariable statistics in microseconds, total: 220000, p50: 12917, p95: 98373, p99: 130281, max: 155999
-    2024-09-24T20:31:30 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupDispatch statistics in microseconds, total: 10000, p50: 0, p95: 878, p99: 1028, max: 999
-    2024-09-24T20:31:30 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupWaiting statistics in microseconds, total: 10000, p50: 115098, p95: 135947, p99: 137800, max: 155999
-
-`hub` 耗时监控如下
-
-    2024-09-24T20:38:49 [INFO] sniper/util/src/histogram.rs:659 - HubParseProto statistics in microseconds, total: 4900000, p50: 0, p95: 933, p99: 1039, max: 8000
-    2024-09-24T20:39:19 [INFO] sniper/util/src/histogram.rs:659 - HubReadMessage statistics in microseconds, total: 4880000, p50: 891, p95: 2978, p99: 6894, max: 1622015
-
-
-对比 `c++` 版本的 `EmbeddingLookup` `p95` 耗时，还不到 `10000`, 相差了 `10` 倍。
-
-
-##### 不同 `simd` 实现的结果
-
-###### `sum_f32_vectors_simd_flex::<16>`
-
-`sum` 实现如下
-
-    pub fn sum_f32_vectors_simd_flex<const N: usize>(a: &mut Vec<f32>, b: &Vec<f32>)
-    where
-        std::simd::LaneCount<N>: std::simd::SupportedLaneCount,
-        std::simd::Simd<f32, N>: SimdFloat,
-    {
-        let len = a.len();
-        let simd_len = len - (len % N);
-
-        for i in (0..simd_len).step_by(N) {
-            let a_chunk = Simd::<f32, N>::from_slice(&a[i..i+N]);
-            let b_chunk = Simd::<f32, N>::from_slice(&b[i..i+N]);
-            let sum = a_chunk + b_chunk;
-            sum.copy_to_slice(&mut a[i..i+N]);
-        }
-
-        // Handle remaining elements
-        for i in simd_len..len {
-            a[i] += b[i];
-        }
-    }
-
-经检查是参数给错了，`simd` 参数给成了 `4`, 应该给 `16`，和 `embedding_size` 一样，修改后速度能到 `66000 exampls/sec`,
-与预期还是有差距。
-
-    [1,0]<stderr>:OpsEmbeddingLookup statistics => count: 1916  P50: 139392.971246  P95: 164148.000000  P99: 164148.000000  Max: 164148.000000
-    [1,0]<stderr>:OpsPushGrad statistics => count: 1920  P50: 42103.000000  P95: 49243.059193  P99: 49926.977475  Max: 56925.000000
-    [1,0]<stderr>:OpsReadSample statistics => count: 1917  P50: 15857.534247  P95: 34858.333333  P99: 47638.333333  Max: 95223.000000
-    [1,0]<stderr>:2024-09-25 00:55:27,114 - INFO [hooks.py:264 - after_run] - 2024-09-25 00:55:27.114341: step 4600, auc = 0.6717 (64.2 it/sec; 65703.3 examples/sec)
-    [1,0]<stderr>:2024-09-25 00:55:27,114 - INFO [hooks.py:232 - after_run] - 2024-09-25 00:55:27.114695: step 4600, xentropy_mean:0 = 0.27121678 (64.2 it/sec; 65696.7 examples/sec)
-    [1,0]<stderr>:2024-09-25 00:55:27,114 - INFO [hooks.py:232 - after_run] - 2024-09-25 00:55:27.114824: step 4600, prob_mean:0 = 0.08899237 (64.2 it/sec; 65694.2 examples/sec)
-    [1,0]<stderr>:2024-09-25 00:55:27,114 - INFO [hooks.py:232 - after_run] - 2024-09-25 00:55:27.114867: step 4600, real_mean:0 = 0.08007812 (64.2 it/sec; 65694.1 examples/sec)
-
-
-`ps` 耗时监控如下
-
-    2024-09-25T00:57:38 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookup statistics in microseconds, total: 10000, p50: 54313, p95: 128356, p99: 136274, max: 104000
-    2024-09-25T00:57:38 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupOneVariable statistics in microseconds, total: 230000, p50: 6843, p95: 51800, p99: 94071, max: 104000
-    2024-09-25T00:57:38 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupDispatch statistics in microseconds, total: 10000, p50: 0, p95: 957, p99: 1044, max: 2000
-    2024-09-25T00:57:38 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupWaiting statistics in microseconds, total: 10000, p50: 54182, p95: 128022, p99: 136208, max: 104000
-
-
-######  `sum_f32_vectors_simd_no_copy::<16>`
-
-`sum` 实现如下
-
-    pub fn sum_f32_vectors_simd_no_copy<const N: usize>(a: &mut Simd<f32, N>, b: &Vec<f32>)
-    where
-        std::simd::LaneCount<N>: std::simd::SupportedLaneCount,
-        std::simd::Simd<f32, N>: SimdFloat,
-    {
-        let b_chunk = Simd::<f32, N>::from_slice(b.as_slice());
-        *a += b_chunk;
-    }
-
-
-`trainer` 监控耗时如下
-
-    [1,0]<stderr>:OpsEmbeddingLookup statistics => count: 1829  P50: 135684.803002  P95: 159176.000000  P99: 159176.000000  Max: 159176.000000
-    [1,0]<stderr>:OpsPushGrad statistics => count: 1828  P50: 42006.000000  P95: 51919.191919  P99: 61435.000000  Max: 61435.000000
-    [1,0]<stderr>:OpsReadSample statistics => count: 1829  P50: 13885.297619  P95: 21867.650677  P99: 31383.000000  Max: 115997.000000
-    [1,0]<stderr>:2024-09-25 21:01:31,881 - INFO [hooks.py:264 - after_run] - 2024-09-25 21:01:31.881627: step 9900, auc = 0.6665 (61.1 it/sec; 62592.1 examples/sec)
-    [1,0]<stderr>:2024-09-25 21:01:31,881 - INFO [hooks.py:232 - after_run] - 2024-09-25 21:01:31.881838: step 9900, xentropy_mean:0 = 0.29910940 (61.1 it/sec; 62591.8 examples/sec)
-    [1,0]<stderr>:2024-09-25 21:01:31,881 - INFO [hooks.py:232 - after_run] - 2024-09-25 21:01:31.881893: step 9900, prob_mean:0 = 0.10830545 (61.1 it/sec; 62591.8 examples/sec)
-    [1,0]<stderr>:2024-09-25 21:01:31,881 - INFO [hooks.py:232 - after_run] - 2024-09-25 21:01:31.881932: step 9900, real_mean:0 = 0.09472656 (61.1 it/sec; 62591.8 examples/sec)
-
-
-`ps` 耗时监控如下
-
-    2024-09-25T21:02:02 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookup statistics in microseconds, total: 10000, p50: 51209, p95: 60430, p99: 61249, max: 78000
-    2024-09-25T21:02:02 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupOneVariable statistics in microseconds, total: 220000, p50: 3384, p95: 43359, p99: 57832, max: 78000
-    2024-09-25T21:02:02 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupDispatch statistics in microseconds, total: 10000, p50: 0, p95: 914, p99: 1035, max: 1000
-    2024-09-25T21:02:02 [INFO] sniper/util/src/histogram.rs:659 - PsEmbeddingLookupWaiting statistics in microseconds, total: 10000, p50: 51208, p95: 60428, p99: 61247, max: 78000
-
-`hub` 耗时监控如下
-
-    2024-09-25T21:02:36 [INFO] sniper/util/src/histogram.rs:659 - HubReadMessage statistics in microseconds, total: 4040000, p50: 714, p95: 1064, p99: 1532, max: 3666077
-    2024-09-25T21:02:36 [INFO] sniper/util/src/histogram.rs:659 - HubParseProto statistics in microseconds, total: 4050000, p50: 0, p95: 971, p99: 1046, max: 7000
-
-从 `ps` 耗时监控来看，比之前快了一倍，训练速度能到 `6万`。
-
-还是有点奇怪，速度差了很多。待继续排查。
-
-还有个怀疑点: `c++` 中 `EmbeddingLookup` 结果是申请了一个 `var_cont * batch_size * embedding_size` 大小的数组保存结果，
-所有变量只申请了一次内存，而 `rust` 中每个变量用了 `Vec<Vec<f32>>` 两层 `Vec` 来保存，因此有 `batch_size + 1` 次申请，
-最终结果又需要复制到 `TensorMessage` 中，可能也有影响。
-
-##### `EmbeddingLookup` 结果申请一次内存
-
-### 经过第三轮排查与优化后与 `c++` 版本对比
-
-添加了 `simd` 逻辑后速度并没有提高太多, 有点奇怪。并且 `simd` 复制与不复制的逻辑都试过。
-`c++` 中也有复制逻辑，即 `sum` 后把 `simd` 的结果 `load` 到内存中，也有点奇怪。性能不应该差这么多。
-
-可能要对比下 `c++` 中的逻辑。
-
-### 第四轮排查
-
-#### 测试 `c++` 中 `simd` 性能
-
-`c++` 中 `simd` 加速 `sum` 实现如下
-
-    #include <immintrin.h>
-
-    void sum_8_f32(float* dst, const float* src) {
-      __m256 m_dst = _mm256_loadu_ps(dst);
-      __m256 m_src = _mm256_loadu_ps(src);
-      __m256 m_val = _mm256_add_ps(m_dst, m_src);
-      _mm256_storeu_ps(dst, m_val);
-    }
-
-    void sum_f32s(const float* src, float* dst, int32_t n) {
-      int32_t c = n / 8;
-      int32_t offset = 0;
-
-      for (int32_t i = 0; i < c; ++i) {
-        sum_8_f32(dst + offset, src + offset);
-        offset += 8;
-      }
-
-      while (offset < n) {
-        dst[offset] += src[offset];
-        ++offset;
-      }
-    }
-    
-    
-测试代码见: `sniper/trainer/trainer/core/test/test.cc`
-
-结果如下, 普通逻辑就比 `rust` 快了 `4` 倍。
-
-`mm256` 比普通 `sum` 快了约 `1` 倍，`mm512` 比普通 `sum` 快了约 `3` 倍。
-
-`simd` 版本相比 `rust` 版本快了 `10` 倍。
-    
-    I0925 23:55:40.397699 49243 test.cc:32] run_sum_normal, time spend: 1399 milliseconds, count: 10000000
-    I0925 23:55:40.939545 49243 test.cc:43] run_sum_simd_mm256, time spend: 541 milliseconds, count: 10000000
-    I0925 23:55:41.313560 49243 test.cc:55] run_sum_simd_mm512, time spend: 374 milliseconds, count: 10000000
-
-
-#### `rust` 编译 `release`
-
-普通 `sum` 版本 `rust` 就比 `c++` 慢了 `4` 倍，有点奇怪，都是最简答的 `inline` 函数。
-突然想到 `cargo build` 默认编的是 `debug` 版本，编 `release` 试下。
-
-    2024-09-26T00:05:16 [INFO] util/tests/tests.rs:115 - normal sum time spend: 300 milliseconds, count: 10000000
-    2024-09-26T00:05:16 [INFO] util/tests/tests.rs:131 - run_simd_sum_flex, copy to slice, f32x4 sum time spend: 82 milliseconds, count: 10000000
-    2024-09-26T00:05:16 [INFO] util/tests/tests.rs:131 - run_simd_sum_flex, copy to slice, f32x8 sum time spend: 44 milliseconds, count: 10000000
-    2024-09-26T00:05:16 [INFO] util/tests/tests.rs:131 - run_simd_sum_flex, copy to slice, f32x16 sum time spend: 47 milliseconds, count: 10000000
-    2024-09-26T00:05:16 [INFO] util/tests/tests.rs:131 - run_simd_sum_flex, copy to slice, f32x32 sum time spend: 45 milliseconds, count: 10000000
-    2024-09-26T00:05:16 [INFO] util/tests/tests.rs:156 - run_simd_sum_f32_no_copy, no copy, f32x16 sum time spend: 0 milliseconds, count: 10000000
-    2024-09-26T00:05:16 [INFO] util/tests/tests.rs:156 - run_simd_sum_f32_no_copy, no copy, f32x32 sum time spend: 0 milliseconds, count: 10000000
-    2024-09-26T00:05:16 [INFO] util/tests/tests.rs:174 - run_simd_sum_f32_mm256, use mm256 directly, sum time spend: 100 milliseconds, count: 10000000
-    2024-09-26T00:05:16 [INFO] util/tests/tests.rs:190 - run_simd_sum_f32_avx512, user avx512, sum time spend: 95 milliseconds, count: 10000000
-    
-不同计算逻辑加速比如下
-
-| Method                      | Time (ms) | Speedup |
-|-----------------------------|-----------|---------|
-| Normal sum                  | 300       | 1.00x   |
-| SIMD f32x4 (copy to slice)  | 82        | 3.66x   |
-| SIMD f32x8 (copy to slice)  | 44        | 6.82x   |
-| SIMD f32x16 (copy to slice) | 47        | 6.38x   |
-| SIMD f32x32 (copy to slice) | 45        | 6.67x   |
-| SIMD f32x16 (no copy)       | 0         | N/A     |
-| SIMD f32x32 (no copy)       | 0         | N/A     |
-| SIMD mm256                  | 100       | 3.00x   |
-| SIMD AVX512                 | 95        | 3.16x   |
-
-从结果看提高很大，甚至普通版本也比 `c++` 快了 `4` 倍。
-
-并且直接使用 `mm256` 和 `avx512` 比 `Simd` 还要慢一些。避免复制的逻辑依然是最快的。
-
-
-#### `simd` 加速 `Embedding` 效果
 

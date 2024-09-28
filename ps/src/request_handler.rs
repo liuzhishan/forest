@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{anyhow, bail, Result};
 use grpc::sniper::heartbeat_option::{CheckStatus, StatusType};
 use hashbrown::HashMap;
+use likely_stable::unlikely;
 use log::{error, info};
 
 use sync_unsafe_cell::SyncUnsafeCell;
@@ -33,6 +34,8 @@ use grpc::sniper::{TensorProto, TensorShapeProto, VariableType};
 use grpc::tool::{get_request_inner_options, send_bad_request_error, send_error_message};
 use util::error_bail;
 
+use crate::arc_unsafe_slice::ArcUnsafeSlice;
+use crate::arc_unsafe_vec::ArcUnsafeVec;
 use crate::checkpoint::checkpoint_manager::{self, CheckpointManager};
 use crate::checkpoint::restore_task::{
     self, RestoreDenseFromHdfsTask, RestoreDenseFromLocalTask, RestoreSparseFromHdfsTask,
@@ -127,6 +130,8 @@ impl Ps {
             HistogramType::PsPull,
             HistogramType::PsPush,
             HistogramType::PsEmbeddingLookup,
+            HistogramType::PsEmbeddingLookupNewVec,
+            HistogramType::PsEmbeddingLookupSum,
             HistogramType::PsEmbeddingLookupOneVariable,
             HistogramType::PsEmbeddingLookupDispatch,
             HistogramType::PsEmbeddingLookupWaiting,
@@ -323,12 +328,29 @@ impl Ps {
         varnames: &Vec<String>,
         batch_id: u64,
         lookup_option: &EmbeddingLookupOption,
-    ) -> Result<Vec<EmbeddingLookupResult>> {
+        batch_size: usize,
+        total_dim: usize,
+    ) -> Result<ArcUnsafeVec<f32>> {
+        if unlikely(varnames.len() != lookup_option.field_dim.len()) {
+            error_bail!(
+                "varnames.len() != lookup_option.field_dim.len(), varnames.len(): {}, field_dim.len(): {}",
+                varnames.len(),
+                lookup_option.field_dim.len(),
+            );
+        }
+
         let mut tasks = Vec::with_capacity(lookup_option.field_idx.len());
 
         let mut last = Instant::now();
 
         let mut last_dispatch = Instant::now();
+
+        let total = batch_size * total_dim;
+        // Use buffer to avoid multiple memory allocation.
+        let buffer = ArcUnsafeVec::from_vec(vec![0.0; total]);
+
+        // dim_acc is the accumulated dimension of each variable before current variable.
+        let mut dim_acc = 0;
 
         for i in 0..varnames.len() {
             if i >= lookup_option.field_idx.len() {
@@ -342,26 +364,29 @@ impl Ps {
             let new_batch_id = batch_id;
             let new_varname = varnames[i].clone();
             let new_lookup_option = lookup_option.clone();
-            let batch_size = lookup_option.batch_size as usize;
 
             let field = lookup_option.field_idx[i];
 
             let vars = self.embedding_manager.vars_arc();
+            let buffer_clone = buffer.clone();
 
-            match self.embedding_manager.get_index(&varnames[i]) {
-                Some(index) => {
-                    tasks.push(tokio::spawn(async move {
-                        let var = vars.get_element_unchecked(index);
-                        var.embedding_lookup(field, batch_id, batch_size)
-                    }));
-                }
+            let (vars_arc, index) = match self.embedding_manager.get_var(&varnames[i]) {
+                Some(x) => x,
                 None => {
                     error_bail!(
                         "cannot find index in embedding_manager, varname: {}",
                         varnames[i].clone()
                     );
                 }
-            }
+            };
+
+            tasks.push(tokio::spawn(async move {
+                let var = vars_arc.get_element_unchecked(index);
+                var.embedding_lookup(field, batch_id, batch_size, buffer_clone, total_dim, dim_acc)
+            }));
+
+            // Must accumulate strictly.
+            dim_acc += lookup_option.field_dim[i] as usize;
         }
 
         {
@@ -375,15 +400,13 @@ impl Ps {
 
         let mut last_waiting = Instant::now();
 
-        let mut lookup_res: Vec<EmbeddingLookupResult> = Vec::with_capacity(varnames.len());
+        let mut lookup_res: Vec<()> = Vec::with_capacity(varnames.len());
         let mut error_messages: Vec<String> = Vec::new();
 
         for (i, task) in tasks.into_iter().enumerate() {
             match task.await {
                 Ok(task_res) => match task_res {
-                    Ok(x) => {
-                        lookup_res.push(x);
-                    }
+                    Ok(_) => {}
                     Err(err) => {
                         error_messages.push(err.to_string());
                     }
@@ -409,7 +432,7 @@ impl Ps {
         }
 
         if error_messages.len() == 0 {
-            Ok(lookup_res)
+            Ok(buffer)
         } else {
             Err(anyhow!(error_messages.join(", ")))
         }
@@ -589,9 +612,11 @@ impl Ps {
 
             // Only use the float values in corresponding index.
             let start_index = var_start_index[i];
-            let end_index = start_index + option.field_dim[i] as usize;
+            let len =  option.field_dim[i] as usize;
 
-            let grad_values = values[start_index..end_index].to_vec();
+            // Use ArcUnsafeSlice to avoid extra memory allocation.
+            let start_ptr = unsafe { values.as_ptr().add(start_index) };
+            let grad_values = ArcUnsafeSlice::new(start_ptr, len);
 
             let (vars, index) = match self.embedding_manager.get_var(&varname) {
                 Some(x) => x,
@@ -607,7 +632,7 @@ impl Ps {
                 let var = vars.get_element_unchecked(index);
 
                 var.push_grad(
-                    grad_values.as_slice(),
+                    grad_values.get(),
                     new_batch_id,
                     field,
                     learning_rate,
@@ -1131,7 +1156,6 @@ impl Sniper for Ps {
     ) -> Result<Response<VoidMessage>, Status> {
         let request_inner = request.into_inner();
 
-
         let varname = request_inner.varname.clone();
         let batch_id = request_inner.seq_id;
 
@@ -1303,16 +1327,6 @@ impl Sniper for Ps {
 
         let batch_id = request_inner.seq_id;
 
-        let varnames = request_inner
-            .varname
-            .split(",")
-            .map(|x| x.to_string())
-            .collect::<Vec<_>>();
-
-        if varnames.len() == 0 {
-            return send_bad_request_error("options", "varname is empty!");
-        }
-
         let lookup_option = match get_request_inner_options::<EmbeddingLookupOption>(&request_inner)
         {
             Some(x) => x,
@@ -1323,6 +1337,25 @@ impl Sniper for Ps {
                 );
             }
         };
+
+        let varnames = request_inner
+            .varname
+            .split(",")
+            .map(|x| x.to_string())
+            .collect::<Vec<_>>();
+
+        if varnames.len() == 0 {
+            return send_bad_request_error("options", "varname is empty!");
+        }
+
+        // Assembly the result.
+        let batch_size = lookup_option.batch_size as usize;
+
+        // Compute the total embedding size of all field.
+        let total_dim: usize = lookup_option
+            .field_dim
+            .iter()
+            .fold(0, |acc, x| acc + *x as usize);
 
         // Get embedding lookup result concurrently.
         //
@@ -1339,8 +1372,8 @@ impl Sniper for Ps {
             );
         }
 
-        let lookup_res = match self
-            .get_embedding_lookup_result(&varnames, batch_id, &lookup_option)
+        let buffer = match self
+            .get_embedding_lookup_result(&varnames, batch_id, &lookup_option, batch_size, total_dim)
             .await
         {
             Ok(x) => x,
@@ -1353,50 +1386,8 @@ impl Sniper for Ps {
             }
         };
 
-        // Assembly the result.
-        let batch_size = lookup_option.batch_size as usize;
-
-        // Compute the total embedding size of all field.
-        let dim_acc: usize = lookup_option
-            .field_dim
-            .iter()
-            .fold(0, |acc, x| acc + *x as usize);
-
-        let res_dim_acc: usize = lookup_res
-            .iter()
-            .filter(|x| x.values.len() > 0)
-            .fold(0, |acc, x| acc + x.values[0].len());
-
-        if dim_acc != res_dim_acc {
-            return send_error_message::<TensorMessage>(format!(
-                "dim is not eqaul! lookup res total dim: {}, option total dim: {}",
-                res_dim_acc, dim_acc,
-            ));
-        }
-
-        let total = lookup_option.batch_size as usize * dim_acc;
-
-        let mut parameters: Vec<f32> = Vec::with_capacity(total);
-
-        // Assembly the result to 2d tensor.
-        // First dimension is batch_size, second dimension is field.
-        for i in 0..batch_size {
-            for j in 0..lookup_res.len() {
-                if i < lookup_res[j].values.len() {
-                    parameters.extend_from_slice(lookup_res[j].values[i].as_slice());
-                } else {
-                    return send_error_message::<TensorMessage>(format!(
-                        "out of range, i: {}, j: {}, lookup_res[j].values.len(): {}",
-                        i,
-                        j,
-                        lookup_res[j].values.len(),
-                    ));
-                }
-            }
-        }
-
-        let dim = vec![batch_size as i64, dim_acc as i64];
-        let tensor1 = TensorProto::with_vec(DataType::DtFloat.into(), &dim, &parameters);
+        let dim = vec![batch_size as i64, total_dim as i64];
+        let tensor1 = TensorProto::with_vec(DataType::DtFloat.into(), &dim, buffer.as_vec());
 
         let response = TensorMessage {
             role: Role::Ps.into(),

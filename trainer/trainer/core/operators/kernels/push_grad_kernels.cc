@@ -54,15 +54,17 @@ class PushGradOp : public OpKernel {
       LOG(INFO) << "debug offline, set push_thread_count_ = 1";
     }
 
-    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(
-        trainer_id_);  // trainer_id
+    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);
+
     for (int i = 0; i < push_thread_count_; ++i) {
       std::unique_ptr<std::thread> t(
           new std::thread(&PushGradOp::PushGradThread, this));
       push_threads_.push_back(std::move(t));
     }
+
     LOG(INFO) << "Trainer push gard op init. trainer_id: " << trainer_id_
-              << ", sparse_fcs_size: " << train_config_->sparse_fcs().size();
+              << ", sparse_fcs_size: " << train_config_->sparse_fcs().size()
+              << ", push_thread_count_: " << push_thread_count_;
   }
 
   ~PushGradOp() {
@@ -101,6 +103,7 @@ class PushGradOp : public OpKernel {
         SemaphoreLoop::GetInstance().Release(3);
       }
     }
+
     cond_.notify_one();
   }
 
@@ -321,6 +324,7 @@ class PushGradOp : public OpKernel {
         }
         SemaphoreLoop::GetInstance().Release(4);
       }
+
       auto end = std::chrono::steady_clock::now();
       monitor::RunStatus::Instance()->PushTime(
           monitor::kOpsPushGrad,
@@ -359,7 +363,7 @@ class PushGradOp : public OpKernel {
   int32_t trainer_id_;
   TrainConfig* train_config_;
 
-  tensorflow::int32 push_thread_count_ = 5;
+  tensorflow::int32 push_thread_count_ = 8;
   float eps_ = 1e-8;
   float decay_ = 0.0;
   float l2_ = 0.0;

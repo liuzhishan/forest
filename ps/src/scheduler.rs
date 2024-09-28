@@ -1,12 +1,12 @@
 use anyhow::{anyhow, bail, Result};
 use dashmap::{DashMap, DashSet};
 use log::{error, info};
-use util::error_bail;
 use std::time::Duration;
+use util::error_bail;
 
 use std::{collections::VecDeque, sync::atomic::AtomicBool};
-use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
 use tokio_graceful_shutdown::SubsystemHandle;
+use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
 
 use tokio::{select, sync::mpsc};
 
@@ -148,10 +148,7 @@ pub struct SaveStateNotifier {
 }
 
 impl SaveStateNotifier {
-    pub fn new(
-        scheduler_ps: &String,
-        receiver: mpsc::Receiver<(CheckpointContext, bool)>,
-    ) -> Self {
+    pub fn new(scheduler_ps: &String, receiver: mpsc::Receiver<(CheckpointContext, bool)>) -> Self {
         Self {
             scheduler_ps: scheduler_ps.clone(),
             receiver,
@@ -160,9 +157,7 @@ impl SaveStateNotifier {
 
     pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
         let mut client = match get_ps_client(&self.scheduler_ps).await {
-            Ok(client) => {
-                client
-            }
+            Ok(client) => client,
             Err(err) => {
                 error!("get ps client failed!");
                 return Err(err.into());
@@ -300,10 +295,8 @@ impl Scheduler {
             Some(sender) => {
                 sender.send((checkpoint_context, is_success)).await?;
                 Ok(())
-            },
-            None => {
-                Err(anyhow!("no save state sender found!"))
             }
+            None => Err(anyhow!("no save state sender found!")),
         }
     }
 
