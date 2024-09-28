@@ -600,14 +600,6 @@ impl Embedding {
     ) -> Result<()> {
         let mut last = Instant::now();
 
-        // let zeros = vec![0.0; 16];
-
-        // Currently only support 32 float, need to change to generic parameters.
-        // let mut simd_values: Vec<Simd<f32, 16>> = Vec::with_capacity(batch_size);
-        // for i in 0..batch_size {
-        //     simd_values.push(Simd::<f32, 16>::from_slice(zeros.as_slice()));
-        // }
-
         // get batch_message received from hub.
         let batch_message = match self.pull_feed_queue(field, batch_id) {
             Some(x) => x,
@@ -657,14 +649,8 @@ impl Embedding {
             match self.store.get(&signs[i]) {
                 Some(x) => {
                     // If found sign, sum the embedding weight to res.values.
-                    // for j in 0..self.embedding_size {
-                    //     res.values[item_index][j] += x.weight[j];
-                    // }
-
                     //
                     // Use simd to speedup.
-                    // sum_f32_vectors_simd_no_copy::<16>(&mut simd_values[item_index], &x.weight);
-                    // sum_f32_vectors_simd_mm256(&mut res.values[item_index], &x.weight[0..self.embedding_size]);
                     sum_f32_vectors_simd_flex::<8>(
                         &mut cur_buffer,
                         &x.weight[0..self.embedding_size],
@@ -686,11 +672,6 @@ impl Embedding {
                 &mut last_sum_time,
             );
         }
-
-        // Copy the sum result.
-        // for i in 0..batch_size {
-        //     res.values[i] = simd_values[i].to_array().into();
-        // }
 
         // After lookup, push batch_message to lookup_queue for grad parameter updating later.
         self.push_lookup_queue(field, batch_id, batch_message)?;
@@ -745,17 +726,6 @@ impl Embedding {
                     // Using `simd` to speedup.
                     let (w, g) = x.weight.split_at_mut(self.embedding_size);
                     adagrad_update::<8>(w, g, grad, learning_rate, eps)?;
-
-                    // self.apply_adagrad_w(
-                    //     &mut x.weight,
-                    //     grad,
-                    //     self.embedding_size,
-                    //     learning_rate,
-                    //     eta,
-                    //     eps,
-                    //     decay,
-                    //     l2,
-                    // )?;
                 }
                 None => {
                     // Skip. Maybe need some log.

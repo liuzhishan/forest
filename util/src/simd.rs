@@ -90,57 +90,6 @@ pub fn sum_f32_vectors_flex(a: &mut [f32], b: &[f32]) {
     }
 }
 
-/// Sum `Vec<f32>` using `mm256` simd intrinsics.
-// pub fn sum_f32_vectors_simd_mm256(a: &mut Vec<f32>, b: &[f32]) {
-//     assert_eq!(a.len(), b.len(), "Vectors must have the same length");
-
-//     // Ensure the vectors are aligned properly
-//     let (prefix, middle, suffix) = unsafe { a.align_to_mut::<__m256>() };
-//     let (prefix_b, middle_b, suffix_b) = unsafe { b.align_to::<__m256>() };
-
-//     // Handle unaligned prefix
-//     for (x, y) in prefix.iter_mut().zip(prefix_b.iter()) {
-//         *x += *y;
-//     }
-
-//     // Main SIMD loop
-//     unsafe {
-//         for (chunk_a, chunk_b) in middle.iter_mut().zip(middle_b.iter()) {
-//             *chunk_a = _mm256_add_ps(*chunk_a, *chunk_b);
-//         }
-//     }
-
-//     // Handle unaligned suffix
-//     for (x, y) in suffix.iter_mut().zip(suffix_b.iter()) {
-//         *x += *y;
-//     }
-// }
-
-/// Sum `Vec<f32>` using `avx512` simd intrinsics.
-// pub fn sum_f32_vectors_simd_avx512(a: &mut Vec<f32>, b: &[f32]) {
-//     assert_eq!(a.len(), b.len(), "Vectors must have the same length");
-
-//     let (prefix, middle, suffix) = unsafe { a.align_to_mut::<__m512>() };
-//     let (prefix_b, middle_b, suffix_b) = unsafe { b.align_to::<__m512>() };
-
-//     // Handle unaligned prefix
-//     for (x, y) in prefix.iter_mut().zip(prefix_b.iter()) {
-//         *x += *y;
-//     }
-
-//     // Main SIMD loop
-//     unsafe {
-//         for (chunk_a, chunk_b) in middle.iter_mut().zip(middle_b.iter()) {
-//             *chunk_a = _mm512_add_ps(*chunk_a, *chunk_b);
-//         }
-//     }
-
-//     // Handle unaligned suffix
-//     for (x, y) in suffix.iter_mut().zip(suffix_b.iter()) {
-//         *x += *y;
-//     }
-// }
-
 /// Update weights using the Adagrad optimization algorithm with SIMD acceleration.
 ///
 /// # Parameters
