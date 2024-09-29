@@ -10,6 +10,7 @@ use likely_stable::unlikely;
 use log::{error, info};
 
 use sync_unsafe_cell::SyncUnsafeCell;
+use tracing::instrument::WithSubscriber;
 use util::histogram::{
     self, record_time, Histogram, HistogramAggregator, HistogramDetail, HistogramType,
 };
@@ -144,6 +145,16 @@ impl Ps {
         ];
 
         HistogramAggregator::new(histogram_receiver, &histogram_types)
+    }
+
+    /// Get scheduler save state sender clone.
+    #[inline]
+    fn get_save_state_sender(&self) -> Result<mpsc::Sender<(CheckpointContext, bool)>> {
+        let scheduler = self.scheduler.read();
+        match scheduler.save_state_sender.as_ref() {
+            Some(sender) => Ok(sender.clone()),
+            None => Err(anyhow!("no save state sender found!")),
+        }
     }
 
     /// Create embedding variable by create_option.
@@ -749,36 +760,29 @@ impl Ps {
 
             let vars_clone = vars.clone();
 
-            let scheduler = self.scheduler.clone();
+            let save_state_sender = self.get_save_state_sender()?;
 
             // Dispatch the save task.
             tokio::spawn(async move {
                 let save_task = SaveSparseToHdfsTask::new(&new_context);
 
-                let scheduler_read = scheduler.read();
-
                 let var = vars_clone.get_element_unchecked(index);
-
-                info!(
-                    "[Ps.save_sparse_variable] in spawn, varname: {}, i: {}",
-                    new_context.varname.clone(),
-                    i
-                );
 
                 match save_task.run(&var) {
                     Ok(_) => {
+                        // Notify scheduler that the save task is done.
                         info!(
-                            "save one shard of embeding done, varname: {}, inner_shard: {}",
+                            "send save state to scheduler ps, success,varname: {}, context: {:?}",
                             new_context.varname.clone(),
-                            new_context.inner_shard,
+                            new_context.clone()
                         );
 
-                        scheduler_read.send_save_task_state(new_context.clone(), true);
+                        save_state_sender.send((new_context.clone(), true)).await?;
 
                         Ok(())
                     }
                     Err(err) => {
-                        scheduler_read.send_save_task_state(new_context.clone(), false);
+                        save_state_sender.send((new_context.clone(), false)).await?;
 
                         error_bail!(
                             "save embedding parameters failed! varname: {}, inner_shard: {}, err: {}",
@@ -827,7 +831,7 @@ impl Ps {
         context.has_finished = false;
         context.variable_dim = variable_dim;
 
-        let scheduler = self.scheduler.clone();
+        let save_state_sender = self.get_save_state_sender()?;
 
         tokio::spawn(async move {
             let save_task = SaveDenseToHdfsTask::new(&context);
@@ -841,14 +845,12 @@ impl Ps {
                         context.varname.clone()
                     );
 
-                    let scheduler_read = scheduler.read();
-                    scheduler_read.send_save_task_state(context.clone(), true);
+                    save_state_sender.send((context.clone(), true)).await?;
 
                     Ok(())
                 }
                 Err(err) => {
-                    let scheduler_read = scheduler.read();
-                    scheduler_read.send_save_task_state(context.clone(), false);
+                    save_state_sender.send((context.clone(), false)).await?;
 
                     error_bail!(
                         "save dense to file failed! varname: {}, err: {}",
@@ -1112,8 +1114,16 @@ impl Sniper for Ps {
         let hub_endpoints = freeze_option.hub_eps.clone();
         let ps_endpoints = freeze_option.ps_eps.clone();
 
-        let dense_vars: HashMap<String, String> = HashMap::default();
-        let sparse_vars: HashMap<String, String> = HashMap::default();
+        let mut dense_vars: HashMap<String, String> = HashMap::default();
+
+        for dense_varname in freeze_option.dense_vars.iter() {
+            dense_vars.insert(dense_varname.clone(), "".to_string());
+        }
+
+        let mut sparse_vars: HashMap<String, String> = HashMap::default();
+        for sparse_varname in freeze_option.sparse_vars.iter() {
+            sparse_vars.insert(sparse_varname.clone(), "".to_string());
+        }
 
         let mut ps_shard: HashMap<String, Vec<String>> = HashMap::default();
 

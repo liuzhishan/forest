@@ -5,7 +5,7 @@ use util::Status;
 /// Important info used for save or restore checkpoint.
 ///
 /// For example, save to hdfs, or restore from hdfs. Task should use the right parameter for diffrent task.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct CheckpointContext {
     /// Version of checkpoint format.
     pub version: i64,

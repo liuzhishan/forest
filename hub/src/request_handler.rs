@@ -286,6 +286,7 @@ impl Sniper for Hub {
         }
     }
 
+    /// Update ps shard when auto shard is in active.
     async fn update_hub_shard(
         &self,
         request: Request<TensorMessage>,

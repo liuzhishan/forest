@@ -134,6 +134,7 @@ impl FinishRecord {
             }
         }
 
+        info!("check_record: version: {}, is_finished: {}, is_success: {}", version, is_finished, is_success);
         (is_finished, is_finished)
     }
 }
@@ -187,6 +188,12 @@ impl SaveStateNotifier {
 
                             let request =
                                 TensorMessage::with_option(Role::Ps, &checkpoint_context.varname, &mut option)?;
+
+                            info!(
+                                 "send save state to scheduler ps, varname: {}, context: {:?}", 
+                                 checkpoint_context.varname.clone(),
+                                 checkpoint_context
+                            );
 
                             client.heartbeat(request).await;
                         },
@@ -283,21 +290,6 @@ impl Scheduler {
         }
 
         true
-    }
-
-    /// Send save state to channel.
-    pub async fn send_save_task_state(
-        &self,
-        checkpoint_context: CheckpointContext,
-        is_success: bool,
-    ) -> Result<()> {
-        match self.save_state_sender.as_ref() {
-            Some(sender) => {
-                sender.send((checkpoint_context, is_success)).await?;
-                Ok(())
-            }
-            None => Err(anyhow!("no save state sender found!")),
-        }
     }
 
     /// Start a new thread to send save state to scheduler ps.
@@ -410,7 +402,62 @@ impl Scheduler {
         checkpoint_target: CheckPointTarget,
     ) -> Result<(bool, bool)> {
         if checkpoint_target == CheckPointTarget::CkpTargetNfs {
-            Ok(self.finish_records.read().check_record(version))
+            let mut success_count = 0;
+
+            // Get current success count.
+            for x in self.full_version_stat.iter() {
+                // version.
+                let version = x.key();
+
+                // varname records.
+                let vars = x.value();
+
+                for var in vars.iter() {
+                    if self.dense_vars.contains_key(var.key()) {
+                        // If var is dense, there is only one shard.
+                        if var.value().len() == 1 {
+                            success_count += 1;
+                        }
+                    } else {
+                        // If var is sparse, need to get ps shard count.
+                        match self.ps_shard.get(var.key()) {
+                            Some(v) => {
+                                if var.value().len() == v.len() {
+                                    success_count += v.len();
+                                }
+                            },
+                            None => {
+                                error!(
+                                    "cannot find var in sparse ps shard: {}",
+                                    var.key().clone()
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            let need_size = self.sparse_vars.len() + self.dense_vars.len();
+
+            info!(
+                "[Scheculer.check_checkpoint_status] check status, version: {}, success_count: {}, need_size: {}",
+                version,
+                success_count,
+                need_size
+            );
+
+            if success_count == need_size {
+                self.finish_records.write().add_record(
+                    version,
+                    true,
+                    CheckPointTarget::CkpTargetNfs,
+                    CheckPointType::CkpTypeFull
+                );
+
+                Ok((true, true))
+            } else {
+                Ok((false, false))
+            }
         } else {
             Err(anyhow!(format!(
                 "not supported yet! checkpoint_target: {}",
