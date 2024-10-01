@@ -30,9 +30,6 @@ if [ ! -d "/usr/local/lib/libtensorflow" ]; then
     # Configure the linker
     ldconfig /usr/local/lib
     
-    # Clean up the downloaded tar file
-    rm libtensorflow-gpu-linux-x86_64-2.6.0.tar.gz
-    
     echo "libtensorflow has been installed."
 else
     echo "libtensorflow already exists. Skipping download and extraction."

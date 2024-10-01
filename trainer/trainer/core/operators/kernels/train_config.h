@@ -48,13 +48,16 @@ class TrainConfig {
   const std::vector<std::string>& emb_table_names() const {
     return emb_table_names_;
   }
+
   const std::unordered_map<std::string, std::vector<std::string>>& ps_shard()
       const {
     return ps_shard_;
   }
+
   const std::map<std::string, EmbeddingTable>& emb_tables() const {
     return emb_tables_;
   }
+
   int32_t batch_size() { return batch_size_; }
   int32_t dense_total_size() { return dense_total_size_; }
   int32_t sparse_total_size() { return sparse_total_size_; }
@@ -62,22 +65,28 @@ class TrainConfig {
 
   const std::vector<std::string>& input_dense() const { return input_dense_; }
   const std::vector<std::string>& input_sparse() const { return input_sparse_; }
+
   const std::vector<int32_t>& input_dense_dim() const {
     return input_dense_dim_;
   }
+
   const std::vector<int32_t>& input_sparse_dim() const {
     return input_sparse_dim_;
   }
+
   const std::unordered_map<std::string, NumericColumn>& dense_fcs() const {
     return dense_fcs_;
   }
+
   const std::unordered_map<std::string, std::vector<EmbeddingColumn>>&
   sparse_fcs() const {
     return sparse_fcs_;
   }
+
   const std::unordered_map<std::string, SeqColumn>& seq_fcs() const {
     return seq_fcs_;
   }
+
   FeaturePlacement* placement() { return placement_; }
 
   const Basic& basic() const { return basic_; }
@@ -102,6 +111,7 @@ class TrainConfig {
   std::string consumer_user_param() { return consumer_user_param_; }
   bool need_batch() { return need_batch_; }
   std::string checkpoint_version() { return checkpoint_version_; }
+
   int32_t ckp_save_btq_incr_sparse_step() {
     return ckp_save_btq_incr_sparse_step_;
   }
@@ -196,7 +206,6 @@ class TrainConfig {
   bool parse_sample(Json::Value const& value);
   bool parse_trainer(Json::Value const& value);
   bool post_parse();
-  // bool parse_prealloc_ps(Json::Value const& value);
 
   bool read_file(const char* path, Json::Value* root);
 

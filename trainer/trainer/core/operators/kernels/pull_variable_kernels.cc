@@ -26,8 +26,7 @@ class PullVariableOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("conf_file", &conf_file_));
     OP_REQUIRES_OK(context, context->GetAttr("trainer_id", &trainer_id_));
     train_config_ = TrainConfig::GetInstance(conf_file_, trainer_id_);
-    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(
-        trainer_id_);  // trainer_id
+    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);
 
     AutoShard::instance().add_placement(train_config_->placement());
 
@@ -138,11 +137,14 @@ class PullVariableOp : public OpKernel {
                                           std::to_string(vartype_)));
     }
 
-    // 此 op 没有 output, outputs_.size() 是 0，以下两个函数会 core，因此注释掉。
-    // core 的位置是 op_kernel.cc 的 set_output_ref 函数中，如下位置:
+    // This op has no output, outputs_.size() is 0, so the following two functions
+    // would cause a core dump. Therefore, they are commented out.  The core dump
+    // occurs in the set_output_ref function in op_kernel.cc, at the following line:
+
     // CHECK_LT(index, outputs_.size());
     //
-    // 但是不知道为什么 tf1.14 没有报错。看 1.14 的代码也是会 core 的。
+    // However, it's unclear why tf1.14 didn't report an error. Looking at the 1.14 code,
+    // it should also cause a core dump.
     //
     // ctx->forward_ref_input_to_ref_output(0, 0);
     // ctx->forward_ref_input_to_ref_output(1, 1);

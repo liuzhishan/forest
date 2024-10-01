@@ -14,52 +14,58 @@
 
 namespace sniper {
 
-// feed queue 请求 embedding look up 耗时。
+/// Feed queue request embedding lookup time.
 struct LookupInfo {
   explicit LookupInfo(size_t field, uint64_t time_spend): field(field), time_spend(time_spend) {}
 
-  // 特征 field
+  /// field.
   size_t field = 0;
-  // 微秒
+
+  /// microseconds.
   uint64_t time_spend = 0;
 };
 
 class AutoShard {
  private:
-  // 记录请求耗时。
-  // 第一层 ps_index, value 是请求耗时的记录。
+  /// Record the request time.
+  /// The first layer is ps_index, and the value is the request time record.
   std::vector<std::vector<LookupInfo>> lookup_infos_;
 
-  // 最初的 ps_shard, 每个 field 随机分一个 ps
+  // The initial ps_shard, each field is randomly assigned a ps.
   // field -> [ps_index]
   std::vector<std::vector<size_t>> origin_ps_shard_;
-  // field -> [ps_index]
+
+  /// field -> [ps_index]
   std::vector<std::vector<size_t>> new_ps_shard_;
-  // 新增加的 shard
-  // ps -> [field]
+
+  /// The new added shard
+  /// ps -> [field]
   std::vector<std::vector<size_t>> new_alloc_shard_;
 
   int ps_count_ = 0;
   int sparse_count_ = 0;
 
-  // 取 top ps 进行重新分配
+  /// Top ps for re-allocation.
   int top_ps_;
-  // top field 个数
+
+  /// Top field count.
   int top_field_;
-  // 每个 field 对应的 shard 上限
+
+  /// Each field's shard limit.
   int field_shard_limit_;
-  // 每个多少步自动计算 shard
+
+  /// Each step limit.
   int step_limit_ = 1000;
   int ps_request_count_ = 0;
   int update_shard_limit_ = 0;
   bool is_move_shard_ = true;
 
-  // 更新的次数
+  /// Update times.
   int update_time_ = 0;
 
   bool is_already_save_ = false;
 
-  // 最多保存多少数据
+  /// The limit of lookup info.
   const int lookup_info_limit_ = 1000000;
 
   // Each operator has it's own placements, must all be updated too.
@@ -94,16 +100,18 @@ class AutoShard {
                       const std::string& ps_name,
                       const EmbeddingLookupOption& option);
 
-  // 是否已经到达重新计算 shard 的 step
+  /// Whether to ready for re-calculating shard.
   bool is_ready() ;
-  // 新 shard 是否已经稳定
+
+  /// Whether the new shard is stable.
   bool is_finish() const;
 
   const std::vector<std::vector<size_t>>& new_alloc_shard() const { return (new_alloc_shard_); }
 
-  // 返回 field 对应的 ps 列表。
+  /// Compute the field's ps list.
   std::vector<std::vector<size_t>> compute_shard();
-  // 每个 ps 新增的 field 列表。
+
+  /// Compute the new alloc shard for each ps.
   std::vector<std::vector<size_t>> compute_new_alloc_shard(
     const std::vector<std::vector<size_t>>& new_ps_shard,
     const std::vector<std::vector<size_t>>& origin_ps_shard);

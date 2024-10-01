@@ -18,8 +18,10 @@ void TrainConfig::ConvertConfigToPb(TrainConfig* config,
                                     StartSampleOption& option) {
   auto& ps_eps = config->ps_eps();
   auto& hub_eps = config->hub_eps();
+
   auto& input_dense = config->input_dense();
   auto& input_sparse = config->input_sparse();
+
   auto batch_size = config->batch_size();
   auto dense_total_size = config->dense_total_size();
   auto label_size = config->label_size();
@@ -55,8 +57,10 @@ void TrainConfig::ConvertConfigToPb(TrainConfig* config,
     int prefix = -1;
     int slot = -1;
     std::string emb_table_name = "";
+
     auto sparse_it = config->sparse_fcs().find(sparse_name);
     auto seq_it = config->seq_fcs().find(sparse_name);
+
     auto add_func = [&]() -> void {
       if (config->emb_tables().find(emb_table_name) ==
           config->emb_tables().end()) {
@@ -75,6 +79,7 @@ void TrainConfig::ConvertConfigToPb(TrainConfig* config,
       field_info->set_class_name(sparse_name);
       field_info->set_prefix(prefix);
       field_info->set_index(i);
+
       field_info->set_size(bucket_size);
       field_info->set_valid(true);
       field_info->set_slot(slot);
@@ -82,6 +87,7 @@ void TrainConfig::ConvertConfigToPb(TrainConfig* config,
           option.mutable_feature_list()->mutable_sparse_emb_table()->Add();
       *tmp = emb_table_name;
     };
+
     if (sparse_it == config->sparse_fcs().end() &&
         seq_it == config->seq_fcs().end()) {
       LOG(ERROR) << "sparse feature not find, sparse_name: " << sparse_name;
@@ -206,11 +212,6 @@ bool TrainConfig::parse() {
     return false;
   }
 
-  // if(!parse_prealloc_ps(value)){
-  //   LOG(ERROR) << "parse pre_alloc ps fail");
-  //   return false;
-  // }
-
   if (!parse_trainer(value)) {
     LOG(ERROR) << "parse trainer fail";
     return false;
@@ -227,33 +228,7 @@ bool TrainConfig::parse() {
   return true;
 }
 
-// bool TrainConfig::parse_prealloc_ps(Json::Value const& value) {
-//   //读取预分配的ps数
-//   if(!value.isMember("alloc_ps") &&
-//       value["alloc_ps"].type() == Json::objectValue){
-//     return false;
-//   }
-//   auto alloc_ps = value["alloc_ps"];
-//   Json::Value::Members mems = alloc_ps.getMemberNames();
-//   for (auto iter = mems.begin(); iter != mems.end(); iter++) {
-//     std::string fc_name = *iter;
-//     if (alloc_ps[fc_name].type() == Json::arrayValue &&
-//     alloc_ps[fc_name].size() > 0) {
-//       std::string s;
-//       for (int i = 0; i < int(alloc_ps[fc_name].size()); ++i) {
-//         ps_shard_[fc_name].push_back(alloc_ps[fc_name][i].asString());
-//         s += alloc_ps[fc_name][i].asString() + ",";
-//       }
-//       LOG(INFO) << "ps_shard, key: {}, value: {}", fc_name, s);
-//     } else {
-//       return false;
-//     }
-//   }
-//   return true;
-// }
-
 bool TrainConfig::parse_basic(Json::Value const& value) {
-  // TODO(dx)
   return true;
 }
 

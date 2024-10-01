@@ -28,10 +28,11 @@ static int VarLengthEncodingSize(tensorflow::uint32 tag, size_t bytes) {
 // the "skeleton" of "val" (all the data needed for dtype and the shape,
 // but not the actual contents of "val").
 static int SkeletonEncodingSizeUpperBound(const tensorflow::Tensor& val) {
-  static const int kVarintMax64 = 10;  // Max length of varint64 encoding
+  // Max length of varint64 encoding
+  static const int kVarintMax64 = 10;
+
   const int ndims = val.shape().dims();
-  return (2 * kVarintMax64) +           // dtype
-         (ndims * (4 * kVarintMax64));  // Shape: 4 varints per dim
+  return (2 * kVarintMax64) + (ndims * (4 * kVarintMax64));
 }
 
 // Encode the skeleton for "val" (the encoded TensorProto contents
@@ -47,8 +48,7 @@ static void EncodeSkeleton(const tensorflow::Tensor& val,
   int tensor_shape_bytes = 0;
   for (int d = 0; d < ndims; d++) {
     tensorflow::int64 dim_size = val.shape().dim_size(d);
-    tensor_shape_bytes += 1 +  // TensorShapeProto::kDimFieldNumber
-                          tensorflow::core::VarintLength(dim_size);
+    tensor_shape_bytes += 1 + tensorflow::core::VarintLength(dim_size);
   }
 
   if (tensor_shape_bytes > 0) {
@@ -81,13 +81,12 @@ void EncodeTensorToByteBuffer(Role role, int32_t role_id, uint64_t seq_id,
   size_t expected_size = header.size();
 
   // Now allocate memory and put into the ByteBuffer
-  ::grpc::Slice slices[5];  // meta, tensor1, tensor2
+  ::grpc::Slice slices[5];
 
   // meta
   int num_slices = 0;
   {
-    tensorflow::gtl::InlinedVector<char, 4096> space(
-        header.size());  // we need 4k to avoid reallocate on heap
+    tensorflow::gtl::InlinedVector<char, 4096> space(header.size());
     tensorflow::io::ProtoEncodeHelper e(space.data(), space.size());
     e.WriteRawBytes(header);
 
@@ -119,9 +118,7 @@ void EncodeTensorToByteBuffer(Role role, int32_t role_id, uint64_t seq_id,
 }
 
 size_t EncodeTensorToGrpcSlice(const tensorflow::Tensor& val,
-                               // NOLINTNEXTLINE
                                tensorflow::uint32 tag, size_t& acc_size,
-                               // NOLINTNEXTLINE
                                ::grpc::Slice& slice1, ::grpc::Slice& slice2) {
   const int kLargeTensorBytes = 1024;
   tensorflow::gtl::InlinedVector<char, 128> skeleton(

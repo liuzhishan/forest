@@ -2,11 +2,6 @@
 #include <thread>
 
 #include "glog/logging.h"
-#include "trainer/core/operators/kernels/train_config.h"
-#include "trainer/core/util/placement/auto_shard.h"
-#include "trainer/core/proto/meta.pb.h"
-#include "trainer/core/rpc/grpc/grpc_client.h"
-#include "trainer/core/util/monitor/run_status.h"
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
@@ -15,28 +10,18 @@
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
 #include "trainer/core/base/semaphore.h"
+#include "trainer/core/operators/kernels/train_config.h"
+#include "trainer/core/proto/meta.pb.h"
+#include "trainer/core/rpc/grpc/grpc_client.h"
+#include "trainer/core/util/monitor/run_status.h"
+#include "trainer/core/util/placement/auto_shard.h"
 
-// DEFINE_string(push_grad_varname_delimiter, "!@#", "");
 DEFINE_bool(push_grad_bfloat16, false, "");
 
 namespace sniper {
 namespace ops {
 
 using namespace tensorflow;
-
-std::string JoinFloat(const float* arr, int n, const std::string& sep) {
-  std::ostringstream oss;
-
-  for (int i = 0; i < n; i++) {
-    if (i < n - 1) {
-      oss << arr[i] << sep;
-    } else {
-      oss << arr[i];
-    }
-  }
-
-  return oss.str();
-}
 
 class PushGradOp : public OpKernel {
  public:
@@ -112,14 +97,13 @@ class PushGradOp : public OpKernel {
     auto batch_size = train_config_->batch_size();
     auto& emb_tables = train_config_->emb_tables();
     auto& input_sparse = train_config_->input_sparse();
-    auto input_sparse_emb_table_names =
-        train_config_->emb_table_names();
+    auto input_sparse_emb_table_names = train_config_->emb_table_names();
 
     if (train_config_->debug_offline()) {
       SemaphoreLoop::GetInstance().Acquire(3);
     }
 
-    // 获取变量拓扑关系
+    // Get variable topology relationships
     int32_t sum = 0;
     std::unordered_map<std::string, std::vector<std::string>> ps_var_names;
     std::unordered_map<std::string, std::vector<int32_t>> ps_var_size;
@@ -169,7 +153,7 @@ class PushGradOp : public OpKernel {
       grad_list_.pop_front();
       lk.unlock();
 
-      // 如果 shard 有更新，此处需要重新获取变量
+      // If the shard has been updated, we need to re-fetch the variables here
       if (update_time != auto_shard.update_time()) {
         ps_var_names.clear();
         ps_var_size.clear();
@@ -187,7 +171,8 @@ class PushGradOp : public OpKernel {
 
           auto var_dim = it_table->second.dim();
 
-          auto shard_eps = train_config_->placement()->GetEmbPlacement(emb_table);
+          auto shard_eps =
+              train_config_->placement()->GetEmbPlacement(emb_table);
           for (size_t j = 0; j < shard_eps.size(); ++j) {
             auto ep = shard_eps[j];
 
@@ -224,10 +209,10 @@ class PushGradOp : public OpKernel {
           errors::InvalidArgument("sum(var_grad_dim_size) != grad_size"));
 
       // ------------------- step1 ------------------
-      // ps 纬度重新组包
-      // why？ 如果按 var进行拆包，rpc调用会消耗大量 GPU机器的cpu资源，按
-      // ps纬度组包，将资源消耗降低至1/10 ～ 1/5
-      // 进而可以加上传输层压缩，可以进一步减少带宽占用
+      // Re-package the gradients for each ps
+      // why? If we unpack the gradients by var, the rpc call will consume a lot of CPU resources on GPU machines,
+      // and by packing the gradients by ps, the resource consumption is reduced to 1/10 to 1/5
+      // We can also add transport layer compression to further reduce bandwidth usage.
       auto grad_flat = grad.flat<float>();
       for (size_t i = 0; i < grad_flat.size(); i++) {
         OP_REQUIRES(ctx_, !std::isnan(grad_flat(i)),
@@ -256,12 +241,6 @@ class PushGradOp : public OpKernel {
                 grad_flat.data() + i * grad_size + var_idx, emb_size,
                 ps_grad_flat.data() + i * var_total_size + ps_emb_size_idx);
             ps_emb_size_idx += emb_size;
-
-            // if (var_names[j] == "embedding_0") {
-            //   LOG(INFO) << "before push grad, i: " << i
-            //             << ", batch_id: " << batch_id
-            //             << ", grad: " << JoinFloat(grad_flat.data() + i * grad_size + var_idx, emb_size, ",");
-            // }
           }
           OP_REQUIRES(
               ctx_, ps_emb_size_idx == var_total_size,
@@ -271,7 +250,7 @@ class PushGradOp : public OpKernel {
       }
 
       // ------------------- step2 ------------------
-      // 发送梯度更新包到各个 ps
+      // Send gradient update packages to each ps
       std::vector<rpc::RpcHandlePtr> hdls;
       for (auto& it : ps_grads) {
         auto ep = it.first;
@@ -295,24 +274,15 @@ class PushGradOp : public OpKernel {
                                       ps_grad.NumElements());
           ps_grad = bfloat16_ps_grad;
         }
-        // std::string ps_join_varname =
-        //    absl::StrJoin(varnames, FLAGS_push_grad_varname_delimiter);
+
         std::string ps_join_varname = absl::StrJoin(varnames, ",");
 
         auto hdl = rpc_client_->PushGradAsync(ep, batch_id, ps_join_varname,
                                               option, ps_grad, Tensor());
+
+        // No wait for performance
         hdls.push_back(hdl);
       }
-      // NOTE(dongxing) 为了性能，不做同步等待
-      /*
-      for (auto& h : hdls) {
-        if (!h->Wait()) {
-          LOG(WARNING) << "push grad at hub[" << h->ep()
-                      << "] fail. error=" << h->errmsg();
-          return;
-        }
-      }
-      */
 
       if (train_config_->debug_offline()) {
         for (auto& h : hdls) {
@@ -334,11 +304,10 @@ class PushGradOp : public OpKernel {
     if (grad_list_.empty()) {
       LOG(INFO) << "Trainer PushGradThread exit, trainer_id: " << trainer_id_;
     } else {
-      LOG(WARNING) << "Trainer PushGradThread exit, but queue is not empty, trainer_id: "
-                   << trainer_id_
-                   << ", grad_list.size(): " << grad_list_.size();
+      LOG(WARNING)
+          << "Trainer PushGradThread exit, but queue is not empty, trainer_id: "
+          << trainer_id_ << ", grad_list.size(): " << grad_list_.size();
     }
-
   }
 
   OpKernelConstruction* ctx_;

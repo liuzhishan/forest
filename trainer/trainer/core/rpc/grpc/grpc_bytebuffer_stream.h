@@ -10,7 +10,7 @@
 
 namespace grpc {
 
-// A ZeroCopyInputStream that reads from grpc_byte_buffer
+/// A ZeroCopyInputStream that reads from grpc_byte_buffer
 class GrpcBufferReader final
     : public ::google::protobuf::io::ZeroCopyInputStream {
   typedef void (CoreCodegenInterface::*OldReaderInitAPI)(
@@ -68,10 +68,9 @@ class GrpcBufferReader final
         BackUp(size - count);
         return true;
       }
-      // size < count;
       count -= size;
     }
-    // error or we have too large count;
+
     return false;
   }
 
@@ -91,7 +90,7 @@ class GrpcBufferReader final
 namespace sniper {
 namespace rpc {
 
-// A ZeroCopyInputStream that reads from a grpc::ByteBuffer.
+/// A ZeroCopyInputStream that reads from a grpc::ByteBuffer.
 class GrpcByteBufferSource
     : public ::google::protobuf::io::ZeroCopyInputStream {
  public:
@@ -104,9 +103,16 @@ class GrpcByteBufferSource
 
  private:
   std::vector<::grpc::Slice> slices_;
-  size_t cur_;       // Current slice index.
-  int left_;         // Number of bytes in slices_[cur_] left to yield.
-  const char* ptr_;  // Address of next byte in slices_[cur_] to yield.
+
+  // Current slice index.
+  size_t cur_;
+
+  // Number of bytes in slices_[cur_] left to yield.
+  int left_;
+
+  // Address of next byte in slices_[cur_] to yield.
+  const char* ptr_;
+
   ::google::protobuf::int64 byte_count_;
 };
 
@@ -142,8 +148,9 @@ class GrpcByteSource : public Source {
     }
   }
 
-  grpc_byte_buffer* buffer_;  // Not owned
-  Reader* stream_ = nullptr;  // Points into space_ if non-nullptr
+  grpc_byte_buffer* buffer_;
+  Reader* stream_ = nullptr;
+
   char space_[sizeof(Reader)];
 };
 

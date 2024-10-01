@@ -223,11 +223,11 @@ std::string HistogramStat::ToString() const {
     snprintf(buf, sizeof(buf),
              "%c %7" PRIu64 ", %7" PRIu64 " ] %8" PRIu64 " %7.3f%% %7.3f%% ",
              (b == 0) ? '[' : '(',
-             (b == 0) ? 0 : bucketMapper.BucketLimit(b - 1),  // left
-             bucketMapper.BucketLimit(b),                     // right
-             bucket_value,                                    // count
-             (mult * bucket_value),                           // percentage
-             (mult * cumulative_sum));  // cumulative percentage
+             (b == 0) ? 0 : bucketMapper.BucketLimit(b - 1),
+             bucketMapper.BucketLimit(b),
+             bucket_value,
+             (mult * bucket_value),
+             (mult * cumulative_sum));
     r.append(buf);
 
     // Add hash marks based on percentage; 20 marks for 100%.

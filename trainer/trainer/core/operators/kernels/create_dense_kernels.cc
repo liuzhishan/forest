@@ -18,13 +18,15 @@ class CreateDenseOp : public OpKernel {
  public:
   explicit CreateDenseOp(OpKernelConstruction* context) : OpKernel(context) {
     conf_file_ = "./train_config.json";
+
     OP_REQUIRES_OK(context, context->GetAttr("conf_file", &conf_file_));
     OP_REQUIRES_OK(context, context->GetAttr("trainer_id", &trainer_id_));
-    train_config_ = TrainConfig::GetInstance(conf_file_, trainer_id_);
-    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(
-        trainer_id_);  // trainer_id
     OP_REQUIRES_OK(context, context->GetAttr("varname", &varname_));
+
+    train_config_ = TrainConfig::GetInstance(conf_file_, trainer_id_);
+    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);
   }
+
   ~CreateDenseOp() {}
 
   void Compute(OpKernelContext* context) override {
@@ -59,8 +61,11 @@ class CreateDenseOp : public OpKernel {
 
  private:
   std::string conf_file_;
+
   TrainConfig* train_config_;
+
   int32_t trainer_id_;
+
   rpc::RPCClient* rpc_client_;
 
   std::string varname_;

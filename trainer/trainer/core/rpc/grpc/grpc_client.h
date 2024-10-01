@@ -279,11 +279,11 @@ class GRPCClient : public RPCClient {
 
   std::unordered_map<std::string, std::shared_ptr<grpc::Channel>> channels_;
 
-  // mutex for GetChannel thread safety
+  // Mutex for GetChannel thread safety
   std::mutex chan_mutex_;
   SNIPER_NOT_COPYABLE_AND_MOVABLE(GRPCClient)
 
-  // mutex for sending complete message only once
+  // Mutex for sending complete message only once
   std::mutex completed_mutex_;
   bool completed_;
 

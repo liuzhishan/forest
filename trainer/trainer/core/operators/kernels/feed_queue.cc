@@ -17,8 +17,6 @@
 #include "trainer/core/rpc/grpc/grpc_client.h"
 #include "trainer/core/util/monitor/run_status.h"
 
-// DEFINE_string(varname_delimiter, "!@#", "");
-
 namespace sniper {
 namespace ops {
 
@@ -106,7 +104,9 @@ bool FeedQueue::feed(FeatureColumn*& feature, bool* over) {
     feature = queue_.front();
     queue_.pop();
     lock.unlock();
-    cv_.notify_one();  // 通知队列已经不再满了
+
+    // Notify one thread to consume.
+    cv_.notify_one();
 
     if (feature != nullptr) {
       return true;
@@ -291,7 +291,7 @@ void FeedQueue::consume(int thread_id) {
     // EmbedddingLookup
     {
       auto start = std::chrono::steady_clock::now();
-      // 获取变量拓扑关系
+      // Get variable topology relationship.
       int32_t sum = 0;
       std::unordered_map<std::string, std::vector<std::string>> ps_var_names;
       std::unordered_map<std::string, std::vector<int32_t>> ps_var_size;
@@ -373,7 +373,7 @@ void FeedQueue::consume(int thread_id) {
         }
 
         if (use_auto_shard_) {
-          // 记录响应时间
+          // Record response time.
           if (thread_id == 0 && !auto_shard.is_finish()) {
             auto_shard.add_time_spend(ps_to_index, ps_var_names, ep, option);
           }
@@ -424,7 +424,7 @@ void FeedQueue::consume(int thread_id) {
           break;
         }
 
-        // 拆包 (ep纬度拆到 var纬度)
+        // Unpack (ep dimension to var dimension).
         auto& var_names = ps_var_names[ep];
         auto& var_size = ps_var_size[ep];
         auto& var_idx = ps_var_idx[ep];
@@ -727,7 +727,7 @@ absl::optional<CreateOption> FeedQueue::get_create_option(
 
   option.set_use_param_vector(train_config_ptr->use_param_vector());
 
-  // TODO for test default opt is adam
+  /// TODO for test default opt is adam
   option.set_optimizer(train_config_ptr->optimizer());
   option.set_beta1(train_config_ptr->beta1());
   option.set_beta2(train_config_ptr->beta2());

@@ -19,9 +19,7 @@ void EncodeTensorToByteBuffer(Role role, int32_t role_id, uint64_t seq_id,
                               const tensorflow::Tensor& val2,
                               ::grpc::ByteBuffer* result);
 size_t EncodeTensorToGrpcSlice(const tensorflow::Tensor& val,
-                               // NOLINTNEXTLINE
                                tensorflow::uint32 tag, size_t& acc_size,
-                               // NOLINTNEXTLINE
                                ::grpc::Slice& slice1, ::grpc::Slice& slice2);
 
 void DecodeTensorFromByteBuffer(TensorResponse* response,

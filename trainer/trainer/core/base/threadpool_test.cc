@@ -20,7 +20,6 @@ TEST(ThreadPool, ConcurrentRun) {
   std::vector<std::future<void>> fs;
   std::mutex fs_mu;
   int n = 50;
-  // sum = (n * (n + 1)) / 2
   for (int i = 1; i <= n; ++i) {
     std::thread t(do_sum, &fs, &fs_mu, &sum, i);
     threads.push_back(std::move(t));

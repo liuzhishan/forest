@@ -22,20 +22,24 @@ class StartSampleOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("work_mode", &work_mode_));
 
     conf_file_ = "./train_config.json";
+
     OP_REQUIRES_OK(context, context->GetAttr("conf_file", &conf_file_));
     OP_REQUIRES_OK(context, context->GetAttr("trainer_id", &trainer_id_));
+
     train_config_ = TrainConfig::GetInstance(conf_file_, trainer_id_);
-    rpc_client_ =
-        rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);  // worker_id
+    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);
   }
+
   ~StartSampleOp() {}
 
   void Compute(OpKernelContext* ctx) override {
     StartSampleOption option;
+
     option.set_src(static_cast<sniper::Src>(src_));
     option.set_parallel(parallel_);
     option.set_role(ROLE_HUB);
     option.set_work_mode(static_cast<sniper::WorkMode>(work_mode_));
+
     TrainConfig::ConvertConfigToPb(train_config_, option);
 
     LOG(INFO) << "enable_format_opt: " << option.enable_format_opt()
@@ -44,14 +48,18 @@ class StartSampleOp : public OpKernel {
               << ", hash_type: " << option.hash_type();
 
     auto& hub_eps = train_config_->hub_eps();
+
     std::vector<std::vector<std::string>> hub_file_list_;
     hub_file_list_.resize(hub_eps.size());
+
     for (size_t i = 0; i < file_list_.size(); ++i) {
       hub_file_list_[i % hub_eps.size()].push_back(file_list_[i]);
     }
 
     int32_t btq_topic_num = train_config_->btq_topic_num();
+
     assert(btq_topic_num >= hub_eps.size());
+
     std::vector<std::pair<int32_t, int32_t>> btq_shards;
     if (btq_topic_num > 0) {
       LOG(INFO) << "Start Btq Stream ,partition size : " << btq_topic_num;
@@ -81,6 +89,7 @@ class StartSampleOp : public OpKernel {
       auto h = rpc_client_->StartSampleAsync(hub_eps[i], option);
       hdls.push_back(h);
     }
+
     for (auto& h : hdls) {
       if (!h->Wait()) {
         LOG(WARNING) << "start sample at hub[" << h->ep()

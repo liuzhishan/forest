@@ -22,13 +22,16 @@ class CountFeatureOp : public OpKernel {
  public:
   explicit CountFeatureOp(OpKernelConstruction* context) : OpKernel(context) {
     conf_file_ = "./train_config.json";
+
     OP_REQUIRES_OK(context, context->GetAttr("conf_file", &conf_file_));
+
     train_config_ = TrainConfig::GetInstance(conf_file_, 0);
     rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(0);
 
     hub_eps_ = train_config_->hub_eps();
     hub_over_.assign(hub_eps_.size(), false);
   }
+
   ~CountFeatureOp() {}
 
   inline bool is_over() {
@@ -135,13 +138,18 @@ class CountFeatureOp : public OpKernel {
 
  private:
   std::string conf_file_;
+
   TrainConfig* train_config_;
+
   int32_t trainer_id_;
   rpc::RPCClient* rpc_client_;
 
   std::vector<std::string> hub_eps_;
   mutable std::mutex mu_;
-  std::vector<bool> hub_over_;  // hub server queue is over?
+
+  // hub server queue is over?
+  std::vector<bool> hub_over_;
+
   int32_t hub_idx_ = 0;
 };  // namespace ops
 

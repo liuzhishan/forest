@@ -57,7 +57,10 @@ struct HistogramStat {
   std::atomic_uint_fast64_t num_;
   std::atomic_uint_fast64_t sum_;
   std::atomic_uint_fast64_t sum_squares_;
-  std::atomic_uint_fast64_t buckets_[109];  // 109==BucketMapper::BucketCount()
+
+  // 109==BucketMapper::BucketCount()
+  std::atomic_uint_fast64_t buckets_[109];
+
   const uint64_t num_buckets_;
 };
 

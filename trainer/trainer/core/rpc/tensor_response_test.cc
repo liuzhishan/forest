@@ -53,7 +53,9 @@ void Validate(const tensorflow::Tensor& src1, const tensorflow::Tensor& src2,
   StringSource source(&encoded, 1024);
 
   TensorResponse response;
-  for (int i = 0; i < 2; i++) {  // Twice so we exercise reuse of "response"
+
+  // Twice so we exercise reuse of "response"
+  for (int i = 0; i < 2; i++) {
     int ret = response.Parse(&source);
     EXPECT_EQ(ret, 0);
 

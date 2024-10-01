@@ -20,11 +20,12 @@ class RestoreOp : public OpKernel {
  public:
   explicit RestoreOp(OpKernelConstruction* context) : OpKernel(context) {
     conf_file_ = "./train_config.json";
+
     OP_REQUIRES_OK(context, context->GetAttr("conf_file", &conf_file_));
     OP_REQUIRES_OK(context, context->GetAttr("trainer_id", &trainer_id_));
+
     train_config_ = TrainConfig::GetInstance(conf_file_, trainer_id_);
-    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(
-        trainer_id_);  // trainer_id
+    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);
 
     AutoShard::instance().add_placement(train_config_->placement());
 
@@ -36,6 +37,7 @@ class RestoreOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("shard_nfs_adagrad_paths",
                                              &shard_nfs_adagrad_paths_));
   }
+
   ~RestoreOp() {}
 
   void Compute(OpKernelContext* context) override {
@@ -55,7 +57,6 @@ class RestoreOp : public OpKernel {
       is_sparse = false;
     }
 
-    // TODO(dongxing) 重新计算 shard分配逻辑，实现动态改变
     OP_REQUIRES(context,
                 (shard_idx_ < eps.size()) && (shard_num_ == eps.size()),
                 errors::InvalidArgument(

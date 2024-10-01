@@ -10,7 +10,8 @@ class Semaphore {
 private:
   std::mutex mutex_;
   std::condition_variable condition_;
-  uint64_t count_ = 0;  // Initialized as locked.
+
+  uint64_t count_ = 0;
 
 public:
   void Release(uint64_t count = 1) {

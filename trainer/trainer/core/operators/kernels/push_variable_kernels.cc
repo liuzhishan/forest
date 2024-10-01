@@ -28,9 +28,9 @@ class PushVariableOp : public OpKernel {
   explicit PushVariableOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("conf_file", &conf_file_));
     OP_REQUIRES_OK(context, context->GetAttr("trainer_id", &trainer_id_));
+
     train_config_ = TrainConfig::GetInstance(conf_file_, trainer_id_);
-    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(
-        trainer_id_);  // trainer_id
+    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);
 
     OP_REQUIRES_OK(context, context->GetAttr("varname", &varname_));
     OP_REQUIRES_OK(context, context->GetAttr("vartype", &vartype_));

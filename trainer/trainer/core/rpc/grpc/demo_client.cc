@@ -80,15 +80,7 @@ void lookup() {
     for (int i = 0; i < responses.size(); ++i) {
       hs[i]->Wait();
     }
-    //  for (size_t i = 0; i < responses.size(); ++i) {
-    //    auto& lookup_ret = responses[i].tensor1();  // bfloat16
 
-    //    tensorflow::Tensor float_lookup_ret(tensorflow::DT_FLOAT,
-    //                                        lookup_ret.shape());
-    //    tensorflow::BFloat16ToFloat(
-    //        lookup_ret.flat<tensorflow::bfloat16>().data(),
-    //        float_lookup_ret.flat<float>().data(), lookup_ret.NumElements());
-    //  }
     auto end = std::chrono::steady_clock::now();
     monitor::RunStatus::Instance()->PushTime(
         monitor::kOpsPushGrad,
