@@ -8,6 +8,6 @@
     "warmup_tf_model": "/home/ad/model_offline/dsp_ctr_lzs_test_v5/model_tf.202409211422",
     "restore_mode": 1,
     "export_mode": 1,
-    "use_auto_shard": true,
+    "use_auto_shard": false,
     "print_interval": 100
 }

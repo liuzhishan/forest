@@ -113,10 +113,10 @@ bool AutoShard::is_finish() const {
 }
 
 std::vector<std::vector<size_t>> AutoShard::compute_shard() {
-  // 每个 ps 的 load
+  // Load for each PS
   std::vector<uint64_t> ps_load(ps_count_, 0);
 
-  // 每个 ps 上 field 对应的 load
+  // Each field's load for each PS.
   std::vector<std::vector<uint64_t>> ps_field_load(ps_count_);
   for (size_t i = 0; i < ps_count_; i++) {
     ps_field_load[i].resize(sparse_count_, 0);
@@ -221,7 +221,7 @@ std::vector<std::vector<size_t>> AutoShard::compute_shard() {
   }
 
   for (size_t field = 0; field < new_ps_shard_.size(); field++) {
-    // 每个 field 对应的分片数必须是 2 的幂
+    // The number of shards for each field must be a power of 2
     if (!is_power_of_2(new_ps_shard_[field].size())) {
       for (size_t j = 0; j < ps_count_; j++) {
         if (!is_in_vector(j, new_ps_shard_[field])) {
@@ -251,7 +251,7 @@ void AutoShard::update_placements() {
     }
   }
 
-  // 必须在更新 placement 之后
+  // Must update placement after updating placement
   update_time_ += 1;
 }
 
@@ -261,11 +261,9 @@ std::vector<std::vector<size_t>> AutoShard::compute_new_alloc_shard(
   // field -> [ps_index]
   std::vector<std::vector<size_t>> res(sparse_count_);
 
-  // i 是 field
-  // 已经存在的也要重新创建
+  // `i` is field
   for (size_t i = 0; i < new_ps_shard.size(); i++) {
     if (i < origin_ps_shard.size()) {
-      // 等于 0 的是序列特征
       if (new_ps_shard[i].size() > 0 && origin_ps_shard[i].size() > 0) {
         if (!is_same_vector(new_ps_shard[i], origin_ps_shard[i])) {
           for (size_t ps_index : new_ps_shard[i]) {
