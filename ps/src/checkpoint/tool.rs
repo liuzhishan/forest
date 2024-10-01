@@ -35,12 +35,6 @@ pub struct CheckpointContext {
     /// Total shard number of current sparse embedding var.
     pub shard_num: i32,
 
-    /// Start sign index for sparse embedding var when iterating signs.
-    pub start: usize,
-
-    /// End sign index for sparse embedding var when iterating signs.
-    pub end: usize,
-
     /// Whether should we wait the task to be finished.
     pub need_finished: bool,
 
@@ -65,16 +59,4 @@ pub struct CheckpointContext {
 
 /// Result of checkpoint related task.
 #[derive(Default, Clone)]
-pub struct CheckpointResult {
-    /// Status of different task result.
-    pub status: Status,
-
-    /// Total record count.
-    pub record_count: usize,
-
-    /// Total bytes count.
-    pub bytes_count: usize,
-
-    /// Time spend in milliseconds.
-    pub time_cost_in_ms: i64,
-}
+pub struct CheckpointResult {}

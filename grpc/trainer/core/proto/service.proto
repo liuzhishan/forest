@@ -26,6 +26,7 @@ service Sniper {
   rpc ReadSample(TensorMessage) returns (TensorMessage);
   rpc UpdateHubShard(TensorMessage) returns (VoidMessage);
 
+
   // Ps
   rpc Create(TensorMessage) returns (VoidMessage);
   rpc Freeze(TensorMessage) returns (VoidMessage);
@@ -37,6 +38,7 @@ service Sniper {
   rpc Save(TensorMessage) returns (VoidMessage);
   rpc Restore(TensorMessage) returns (TensorMessage);
   rpc Complete(TensorMessage) returns (VoidMessage);
+  rpc UpdatePsShard(TensorMessage) returns (VoidMessage);
 
   rpc Heartbeat(TensorMessage) returns (TensorMessage);
 }

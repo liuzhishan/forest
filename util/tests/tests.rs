@@ -170,7 +170,6 @@ pub fn sum_f32_vectors_simd_avx512(a: &mut Vec<f32>, b: &[f32]) {
     }
 }
 
-
 fn run_simd_sum_flex<const N: usize>(n: usize, a: &mut Vec<f32>, b: &Vec<f32>)
 where
     LaneCount<N>: SupportedLaneCount,

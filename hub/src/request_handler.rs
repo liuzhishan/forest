@@ -5,12 +5,13 @@ use anyhow::bail;
 use log::{error, info};
 use std::cell::RefCell;
 use sync_unsafe_cell::SyncUnsafeCell;
+use tracing::instrument::WithSubscriber;
 use util::histogram::{Histogram, HistogramAggregator, HistogramDetail, HistogramType};
 
 use std::collections::HashMap as StdHashMap;
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 
 use prost_types::Any;
 use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
@@ -19,8 +20,8 @@ use tonic_types::{ErrorDetails, StatusExt};
 
 use grpc::sniper::sniper_server::{Sniper, SniperServer};
 use grpc::sniper::{
-    start_sample_option, DataType, HelloRequest, HelloResponse, ReadSampleOption, Role,
-    StartSampleOption, TensorMessage, VoidMessage,
+    start_sample_option, DataType, HelloRequest, HelloResponse, PsShard, ReadSampleOption, Role,
+    StartSampleOption, TensorMessage, UpdateShardOption, VoidMessage,
 };
 
 use grpc::sniper::{TensorProto, TensorShapeProto};
@@ -53,12 +54,18 @@ pub struct Hub {
     /// manually at the end of `self.start_sample` function. After spawned tasks finished, all
     /// senders will be dropped, and the receiver would be closed normally.
     sample_batch_receiver: Arc<SyncUnsafeCell<Option<async_channel::Receiver<SampleBatch>>>>,
+
+    /// Broadcast channel to send ps shard to all threads.
+    ps_shard_sender: broadcast::Sender<Vec<Vec<i32>>>,
 }
 
 impl Hub {
     pub fn new() -> Self {
+        let (ps_shard_sender, _) = broadcast::channel(100);
+
         Self {
             sample_batch_receiver: Arc::new(SyncUnsafeCell::new(None)),
+            ps_shard_sender,
         }
     }
 
@@ -135,8 +142,12 @@ impl Sniper for Hub {
 
         // Start running.
         if start_sample_option.need_batch {
-            let mut single_sample_pipeline =
-                SingleSamplePipeline::new(start_sample_option.clone(), batch_sender, histogram);
+            let mut single_sample_pipeline = SingleSamplePipeline::new(
+                start_sample_option.clone(),
+                batch_sender,
+                histogram,
+                self.ps_shard_sender.clone(),
+            );
 
             if !single_sample_pipeline.init().await {
                 error!("single_sample_pipeline init failed!");
@@ -157,8 +168,12 @@ impl Sniper for Hub {
             });
         } else {
             // Need to rm unwrap. use other ways.
-            let mut group_sample_pipeline =
-                GroupSamplePipeline::new(start_sample_option.clone(), batch_sender, histogram);
+            let mut group_sample_pipeline = GroupSamplePipeline::new(
+                start_sample_option.clone(),
+                batch_sender,
+                histogram,
+                self.ps_shard_sender.clone(),
+            );
 
             if !group_sample_pipeline.init().await {
                 error!("group_sample_pipeline init failed!");
@@ -287,11 +302,42 @@ impl Sniper for Hub {
     }
 
     /// Update ps shard when auto shard is in active.
+    ///
+    /// Use broadcast channel to send shard to all threads.
     async fn update_hub_shard(
         &self,
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
-        Ok(Response::new(VoidMessage::default()))
+        let request_inner = request.into_inner();
+
+        let shard_option = match get_request_inner_options::<UpdateShardOption>(&request_inner) {
+            Some(x) => x,
+            None => {
+                return send_bad_request_error::<VoidMessage>(
+                    "shard",
+                    "from ps shard to options failed!",
+                );
+            }
+        };
+
+        let shard = match shard_option.ps_shard {
+            Some(x) => x,
+            None => {
+                return send_bad_request_error::<VoidMessage>("shard", "ps shard is None!");
+            }
+        };
+
+        info!("update hub shard, shard: {:?}", shard.clone());
+
+        let new_shard = shard.to_vec();
+
+        // Send ps shard to all threads.
+        match self.ps_shard_sender.send(new_shard) {
+            Ok(_) => Ok(Response::new(VoidMessage::default())),
+            Err(err) => {
+                return send_error_message::<VoidMessage>("send ps shard to all threads failed!");
+            }
+        }
     }
 
     async fn heartbeat(
@@ -360,6 +406,13 @@ impl Sniper for Hub {
     }
 
     async fn complete(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        Ok(Response::new(VoidMessage::default()))
+    }
+
+    async fn update_ps_shard(
         &self,
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {

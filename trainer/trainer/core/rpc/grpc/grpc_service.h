@@ -66,6 +66,7 @@ enum class GrpcMethod {
   kRestore,
   kFreeze,
   kComplete,
+  kUpdatePsShard,
 
   kStartSample,
   kReadSample,
@@ -118,6 +119,8 @@ inline const char* GrpcMethodName(GrpcMethod id) {
       return "/sniper.Sniper/ReadSample";
     case GrpcMethod::kUpdateHubShard:
       return "/sniper.Sniper/UpdateHubShard";
+    case GrpcMethod::kUpdatePsShard:
+      return "/sniper.Sniper/UpdatePsShard";
     // scheduler
     case GrpcMethod::kHeartbeat:
       return "/sniper.Sniper/Heartbeat";

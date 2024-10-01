@@ -202,8 +202,8 @@ def get_hdfs_files(dirnames: list):
 
 def get_local_train_files():
     dirnames = ["viewfs:///home/model_strategy_e/users/liuzhishan/simple_features_conv/dsp_feature_nebula_new_v1/20240917/0000",
-                # "viewfs:///home/model_strategy_e/users/liuzhishan/simple_features_conv/dsp_feature_nebula_new_v1/20240917/0100",
-                # "viewfs:///home/model_strategy_e/users/liuzhishan/simple_features_conv/dsp_feature_nebula_new_v1/20240917/0200"
+                "viewfs:///home/model_strategy_e/users/liuzhishan/simple_features_conv/dsp_feature_nebula_new_v1/20240917/0100",
+                "viewfs:///home/model_strategy_e/users/liuzhishan/simple_features_conv/dsp_feature_nebula_new_v1/20240917/0200"
                 ]
 
     return get_hdfs_files(dirnames)

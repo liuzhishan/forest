@@ -38,7 +38,7 @@ pub struct VarnameHash {
 impl Default for VarnameHash {
     fn default() -> Self {
         Self {
-            varnames: Vec::with_capacity(1000),
+            varnames: Vec::with_capacity(5000),
             mapping: DashMap::new(),
             is_deleted: Vec::new(),
         }
@@ -46,15 +46,6 @@ impl Default for VarnameHash {
 }
 
 impl VarnameHash {
-    /// Construct varnames with `capacity`.
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            varnames: Vec::with_capacity(capacity),
-            mapping: DashMap::new(),
-            is_deleted: Vec::with_capacity(capacity),
-        }
-    }
-
     /// Add a varname, and store the index in `mapping`, then return the index as hash.
     pub fn add_varname(&mut self, varname: &String) -> usize {
         match self.mapping.get(varname) {
@@ -147,22 +138,14 @@ pub struct VariableManager<T: WithHistogram> {
 
     /// Perfect hash for varname.
     varname_hash: Mutex<VarnameHash>,
-
-    /// Max size of vars.
-    max_size: usize,
-
-    /// Histogram statistics.
-    histogram: Arc<Mutex<Histogram>>,
 }
 
 impl<T: WithHistogram> VariableManager<T> {
-    pub fn new(histogram: Histogram) -> Self {
+    pub fn new() -> Self {
         Self {
-            vars: ArcInnerUnsafeVec::with_capacity(2000),
+            vars: ArcInnerUnsafeVec::with_capacity(5000),
             vars_lock: Mutex::new(true),
             varname_hash: Mutex::new(VarnameHash::default()),
-            max_size: 2000,
-            histogram: Arc::new(Mutex::new(histogram)),
         }
     }
 
@@ -176,9 +159,7 @@ impl<T: WithHistogram> VariableManager<T> {
         let size = self.vars.len();
 
         if h < size {
-            let mut var = self.vars.get_element_mut_unchecked(h);
-            *var = v;
-
+            // Do nothing. because the variable is already exists.
             Ok(())
         } else if h == size {
             // Must be exactly vars.len().

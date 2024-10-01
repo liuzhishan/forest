@@ -32,6 +32,7 @@
       - [第六轮排查: `ReadSample` 性能](framework/topic/training/sixth_round_read_sample_slow.md)
       - [第七轮排查: `PushGrad` 性能](framework/topic/training/seventh_round_push_grad_slow.md)
       - [总结](framework/topic/training/summary.md)
+    - [自动负载均衡](framework/topic/auto_shard.md)
 - [分布式训练平台](platform/README.md)
   - [整体架构](platform/structure.md)
   - [样本格式](platform/grid_buffer.md)

@@ -75,13 +75,6 @@ impl CheckpointManager {
         format!("{}_:_{}", varname.clone(), shard_index)
     }
 
-    /// Whether the var is in `var_restore_state`.
-    #[inline]
-    pub fn contains_var_shard(&self, varname: &String, shard_index: i32) -> bool {
-        let key = self.get_restore_key(varname, shard_index);
-        self.var_restore_state.contains_key(&key)
-    }
-
     /// Record to `restore_state`.
     pub fn insert_restore_state(
         &mut self,

@@ -62,6 +62,7 @@ class AutoShard {
   // 最多保存多少数据
   const int lookup_info_limit_ = 1000000;
 
+  // Each operator has it's own placements, must all be updated too.
   std::vector<FeaturePlacement*> placements_;
 
  public:

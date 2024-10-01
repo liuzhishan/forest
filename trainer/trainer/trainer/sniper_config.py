@@ -18,7 +18,6 @@ import io
 from pyarrow import hdfs
 from collections import defaultdict
 import socket
-import siphash24
 
 from .util import check_dir, logger, get_root_dir, cmd_hadoop, cmd_calc_load
 from .util import PsBalance, master_rank, wrap_ips, FeatureInfo, string_to_int_hash

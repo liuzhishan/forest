@@ -32,8 +32,9 @@ struct FeatureColumn {
   explicit FeatureColumn(int32_t batch_size,
                          int32_t sparse_field_count,
                          const std::vector<int32_t>& sparse_dim) {
-    for (auto& emb_dim : sparse_dim) {
-      embedding_tensor.push_back(tensorflow::Tensor(tensorflow::DT_FLOAT, {batch_size, emb_dim}));
+    for (const auto& emb_dim : sparse_dim) {
+        embedding_tensor.emplace_back(tensorflow::DT_FLOAT, 
+                                      tensorflow::TensorShape({batch_size, emb_dim}));
     }
 
     for (auto& emb : embedding_tensor) {
@@ -121,7 +122,8 @@ class FeedQueue : public tensorflow::ResourceBase {
   mutable std::mutex mu_;
   std::condition_variable cv_;
 
-  std::vector<bool> hub_over_;  // hub server queue is over?
+  /// hub server queue is over?
+  std::vector<bool> hub_over_;
   int32_t hub_idx_ = 0;
 
   std::thread* stat_bg_;

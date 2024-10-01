@@ -235,6 +235,10 @@ class GRPCClient : public RPCClient {
       const std::string& ep, const ::google::protobuf::Message& options,
       int64_t timeout_in_ms = FLAGS_rpc_deadline) override;
 
+  RpcHandlePtr UpdatePsShardAsync(
+      const std::string& ep, const ::google::protobuf::Message& options,
+      int64_t timeout_in_ms = FLAGS_rpc_deadline) override;
+
   RpcHandlePtr HeartbeatAsync(
       const std::string& ep, const ::google::protobuf::Message& options,
       TensorResponse* response, int64_t timeout_in_ms = FLAGS_rpc_deadline) override;

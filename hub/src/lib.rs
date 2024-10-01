@@ -19,5 +19,6 @@ mod start_sample;
 
 mod pipeline;
 
+pub mod auto_shard_updater;
 pub mod local_reader;
 pub mod request_handler;

@@ -164,21 +164,17 @@ struct BatchMessage {
 #[derive(Default)]
 pub struct EmbeddingLookupResult {
     /// Embedding sum of a batch.
-    pub values: ArcUnsafeVec<Vec<f32>>,
+    pub values: ArcUnsafeVec<f32>,
 
     /// Time spend in milliseconds.
-    pub time_spends: u64,
-
-    /// Total signs.
-    pub total_signs: usize,
+    pub time_spends: Vec<u64>,
 }
 
 impl EmbeddingLookupResult {
-    pub fn with_values_capacity(capacity: usize) -> Self {
+    pub fn with_values_capacity(capacity: usize, var_count: usize) -> Self {
         Self {
-            values: ArcUnsafeVec::with_capacity(capacity),
-            time_spends: 0,
-            total_signs: 0,
+            values: ArcUnsafeVec::from_vec(vec![0.0; capacity]),
+            time_spends: vec![0; var_count],
         }
     }
 }
@@ -314,6 +310,14 @@ impl Embedding {
             fields: fields.clone(),
             histogram,
         }
+    }
+
+    pub fn clear(&self) {
+        self.store.clear();
+        self.feed_queue.clear();
+        self.lookup_queue.clear();
+        self.feed_queue_lru.clear();
+        self.lookup_queue_lru.clear();
     }
 
     /// Read the signs and item_indexes in feed_sample_option, and put them in feed_queue.
@@ -589,6 +593,8 @@ impl Embedding {
     ///
     /// Find signs by batch_id first, then get embedding parameter from store by the signs.
     /// Sum the weight for each item_index, then return the result.
+    ///
+    /// Return the total time cost in microseconds for embedding lookup.
     pub fn embedding_lookup(
         &self,
         field: i32,
@@ -597,7 +603,7 @@ impl Embedding {
         buffer: ArcUnsafeVec<f32>,
         total_dim: usize,
         dim_acc: usize,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         let mut last = Instant::now();
 
         // get batch_message received from hub.
@@ -629,7 +635,7 @@ impl Embedding {
             let item_index = item_indexes[i] as usize;
 
             // The start position of the item in buffer.
-            let start = item_index * total_dim + dim_acc; 
+            let start = item_index * total_dim + dim_acc;
 
             // The end position of the item in buffer.
             let end = start + self.embedding_size;
@@ -676,6 +682,8 @@ impl Embedding {
         // After lookup, push batch_message to lookup_queue for grad parameter updating later.
         self.push_lookup_queue(field, batch_id, batch_message)?;
 
+        let time_spend = last.elapsed().as_micros() as u64;
+
         {
             let mut histogram = self.histogram.lock().unwrap();
             record_time(
@@ -685,7 +693,7 @@ impl Embedding {
             );
         }
 
-        Ok(())
+        Ok(time_spend)
     }
 
     /// Update the gradient parameters to store.

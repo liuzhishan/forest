@@ -1003,6 +1003,12 @@ class ModelBase(ABC):
 
                 self._update_model_version(fs, os.path.dirname(cur_model_path), cur_model_path)
 
+        logger.info(
+            "save_to_hdfs done, cur_model_path: %s, export_mode: %d",
+            cur_model_path,
+            export_mode,
+        )
+
     def export_to_hdfs(self):
         self.save(datetime.now(), 2, 1, True)
 

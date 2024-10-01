@@ -19,11 +19,12 @@ class SaveOp : public OpKernel {
  public:
   explicit SaveOp(OpKernelConstruction* context) : OpKernel(context) {
     conf_file_ = "./train_config.json";
+
     OP_REQUIRES_OK(context, context->GetAttr("conf_file", &conf_file_));
     OP_REQUIRES_OK(context, context->GetAttr("trainer_id", &trainer_id_));
+
     train_config_ = TrainConfig::GetInstance(conf_file_, trainer_id_);
-    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(
-        trainer_id_);  // trainer_id
+    rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);
 
     AutoShard::instance().add_placement(train_config_->placement());
 

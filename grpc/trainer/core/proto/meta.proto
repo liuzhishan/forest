@@ -466,7 +466,7 @@ message PsShard {
   repeated IntList value = 1;
 }
 
-message UpdateHubShardOption {
+message UpdateShardOption {
   int32 hub_idx = 1;
   PsShard ps_shard = 2;
 

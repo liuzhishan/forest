@@ -31,7 +31,7 @@ use grpc::sniper::{
     SaveOption, StartSampleOption, TensorMessage, VoidMessage,
 };
 
-use grpc::sniper::{TensorProto, TensorShapeProto, VariableType};
+use grpc::sniper::{TensorProto, TensorShapeProto, UpdateShardOption, VariableType};
 use grpc::tool::{get_request_inner_options, send_bad_request_error, send_error_message};
 use util::error_bail;
 
@@ -91,8 +91,8 @@ impl Ps {
         let histogram = Histogram::new(histogram_sender.clone());
         Self::start_histogram_aggregator(histogram_receiver);
 
-        let embedding_manager = Arc::new(EmbeddingManager::new(histogram.clone()));
-        let dense_manager = Arc::new(DenseManager::new(histogram.clone()));
+        let embedding_manager = Arc::new(EmbeddingManager::new());
+        let dense_manager = Arc::new(DenseManager::new());
         let checkpoint_manager = Arc::new(RwLock::new(CheckpointManager::new()));
         let scheduler = Arc::new(RwLock::new(Scheduler::default()));
         let env = Arc::new(RwLock::new(Env::new()));
@@ -165,7 +165,7 @@ impl Ps {
     ) -> Result<()> {
         // Delete embedding variable for auto sharding.
         if create_option.r#type == VariableType::VarEmbedding.into() && create_option.delete_var {
-            self.embedding_manager.remove(varname);
+            // Do nothing. because the new variable will overwrite the old one.
         }
 
         let env_read = self.env.read();
@@ -341,7 +341,7 @@ impl Ps {
         lookup_option: &EmbeddingLookupOption,
         batch_size: usize,
         total_dim: usize,
-    ) -> Result<ArcUnsafeVec<f32>> {
+    ) -> Result<EmbeddingLookupResult> {
         if unlikely(varnames.len() != lookup_option.field_dim.len()) {
             error_bail!(
                 "varnames.len() != lookup_option.field_dim.len(), varnames.len(): {}, field_dim.len(): {}",
@@ -357,8 +357,9 @@ impl Ps {
         let mut last_dispatch = Instant::now();
 
         let total = batch_size * total_dim;
+
         // Use buffer to avoid multiple memory allocation.
-        let buffer = ArcUnsafeVec::from_vec(vec![0.0; total]);
+        let mut result = EmbeddingLookupResult::with_values_capacity(total, varnames.len());
 
         // dim_acc is the accumulated dimension of each variable before current variable.
         let mut dim_acc = 0;
@@ -379,7 +380,7 @@ impl Ps {
             let field = lookup_option.field_idx[i];
 
             let vars = self.embedding_manager.vars_arc();
-            let buffer_clone = buffer.clone();
+            let buffer_clone = result.values.clone();
 
             let (vars_arc, index) = match self.embedding_manager.get_var(&varnames[i]) {
                 Some(x) => x,
@@ -393,7 +394,14 @@ impl Ps {
 
             tasks.push(tokio::spawn(async move {
                 let var = vars_arc.get_element_unchecked(index);
-                var.embedding_lookup(field, batch_id, batch_size, buffer_clone, total_dim, dim_acc)
+                var.embedding_lookup(
+                    field,
+                    batch_id,
+                    batch_size,
+                    buffer_clone,
+                    total_dim,
+                    dim_acc,
+                )
             }));
 
             // Must accumulate strictly.
@@ -417,7 +425,18 @@ impl Ps {
         for (i, task) in tasks.into_iter().enumerate() {
             match task.await {
                 Ok(task_res) => match task_res {
-                    Ok(_) => {}
+                    Ok(time_spend) => {
+                        if i < result.time_spends.len() {
+                            result.time_spends[i] = time_spend;
+                        } else {
+                            error!(
+                                "out of range when update time spend, i: {}, varname: {}, time_spends.len(): {}",
+                                i,
+                                varnames[i].clone(),
+                                result.time_spends.len()
+                            );
+                        }
+                    }
                     Err(err) => {
                         error_messages.push(err.to_string());
                     }
@@ -443,7 +462,7 @@ impl Ps {
         }
 
         if error_messages.len() == 0 {
-            Ok(buffer)
+            Ok(result)
         } else {
             Err(anyhow!(error_messages.join(", ")))
         }
@@ -623,7 +642,7 @@ impl Ps {
 
             // Only use the float values in corresponding index.
             let start_index = var_start_index[i];
-            let len =  option.field_dim[i] as usize;
+            let len = option.field_dim[i] as usize;
 
             // Use ArcUnsafeSlice to avoid extra memory allocation.
             let start_ptr = unsafe { values.as_ptr().add(start_index) };
@@ -1382,7 +1401,7 @@ impl Sniper for Ps {
             );
         }
 
-        let buffer = match self
+        let result = match self
             .get_embedding_lookup_result(&varnames, batch_id, &lookup_option, batch_size, total_dim)
             .await
         {
@@ -1397,14 +1416,29 @@ impl Sniper for Ps {
         };
 
         let dim = vec![batch_size as i64, total_dim as i64];
-        let tensor1 = TensorProto::with_vec(DataType::DtFloat.into(), &dim, buffer.as_vec());
+        let tensor1 = TensorProto::with_vec(DataType::DtFloat.into(), &dim, result.values.as_vec());
+
+        let res_lookup_option = EmbeddingLookupOption {
+            time_spends: result.time_spends,
+            ..Default::default()
+        };
+
+        let options = match Any::from_msg(&res_lookup_option) {
+            Ok(x) => x,
+            Err(err) => {
+                return send_error_message::<TensorMessage>(format!(
+                    "encode out option failed! err: {}",
+                    err
+                ));
+            }
+        };
 
         let response = TensorMessage {
             role: Role::Ps.into(),
             role_id: Into::<i32>::into(Role::Ps) as u32,
             seq_id: batch_id.into(),
             varname: request_inner.varname.clone(),
-            options: None,
+            options: Some(options),
             tensor1: Some(tensor1),
             tensor2: None,
         };
@@ -1745,5 +1779,42 @@ impl Sniper for Ps {
     ) -> Result<Response<VoidMessage>, Status> {
         let response = VoidMessage::default();
         Ok(Response::new(response))
+    }
+
+    /// UpdatePsShard.
+    ///
+    /// When auto shard is updated, ps must also update scheduler's shard info, which
+    /// is used to determine whether the save is finished.
+    async fn update_ps_shard(
+        &self,
+        request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
+        let request_inner = request.into_inner();
+
+        let shard = match get_request_inner_options::<UpdateShardOption>(&request_inner) {
+            Some(x) => match x.ps_shard {
+                Some(a) => a,
+                None => {
+                    return send_bad_request_error::<VoidMessage>("shard", "ps shard is None!");
+                }
+            },
+            None => {
+                return send_bad_request_error::<VoidMessage>(
+                    "shard",
+                    "from ps shard to options failed!",
+                );
+            }
+        };
+
+        let new_shard = shard.to_vec();
+
+        // Update ps shard in scheduler.
+        match self.scheduler.write().update_ps_shard(&new_shard) {
+            Ok(_) => Ok(Response::new(VoidMessage::default())),
+            Err(err) => send_error_message::<VoidMessage>(format!(
+                "update ps shard failed! shard: {:?}, err: {}",
+                new_shard, err
+            )),
+        }
     }
 }

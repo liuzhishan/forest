@@ -117,6 +117,15 @@ impl TensorMessage {
 
 impl VoidMessage {}
 
+impl PsShard {
+    pub fn to_vec(&self) -> Vec<Vec<i32>> {
+        self.value
+            .iter()
+            .map(|x| x.value.iter().map(|y| y.clone()).collect())
+            .collect()
+    }
+}
+
 impl Name for StartSampleOption {
     const PACKAGE: &'static str = "sniper";
     const NAME: &'static str = "StartSampleOption";
@@ -175,4 +184,14 @@ impl Name for RestoreOption {
 impl Name for HeartbeatOption {
     const PACKAGE: &'static str = "sniper";
     const NAME: &'static str = "HeartbeatOption";
+}
+
+impl Name for PsShard {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "PsShard";
+}
+
+impl Name for UpdateShardOption {
+    const PACKAGE: &'static str = "sniper";
+    const NAME: &'static str = "UpdateShardOption";
 }

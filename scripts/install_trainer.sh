@@ -8,8 +8,35 @@ scriptpath=$(dirname "$script")
 trainer_path=$(readlink -f "$scriptpath/../trainer")
 
 cd ${trainer_path}
-
 echo "cd to trainer_path: ${trainer_path}"
+
+# download tensorflow lib
+# reference: https://www.tensorflow.org/install/lang_c?hl=zh-cn
+#
+# Check if libtensorflow exists
+if [ ! -d "/usr/local/lib/libtensorflow" ]; then
+    echo "libtensorflow not found. Downloading and extracting..."
+    
+    # Download libtensorflow
+    if [ ! -f libtensorflow-gpu-linux-x86_64-2.6.0.tar.gz ]; then
+        wget https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-gpu-linux-x86_64-2.6.0.tar.gz -O libtensorflow-gpu-linux-x86_64-2.6.0.tar.gz
+    else
+        echo "libtensorflow-gpu-linux-x86_64-2.6.0.tar.gz already exists. Skipping download."
+    fi
+    
+    # Extract to /usr/local
+    tar -C /usr/local -xzf libtensorflow-gpu-linux-x86_64-2.6.0.tar.gz
+    
+    # Configure the linker
+    ldconfig /usr/local/lib
+    
+    # Clean up the downloaded tar file
+    rm libtensorflow-gpu-linux-x86_64-2.6.0.tar.gz
+    
+    echo "libtensorflow has been installed."
+else
+    echo "libtensorflow already exists. Skipping download and extraction."
+fi
 
 ./configure.sh
 bazel clean --expunge

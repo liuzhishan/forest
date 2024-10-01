@@ -46,10 +46,6 @@ void FeaturePlacement::UpdateSparsePlacement(const std::vector<std::vector<size_
     for (size_t ps_index : new_ps_shard[field]) {
       if (ps_index < ps_eps_.size()) {
         tmp_placement[varname].push_back(ps_eps_[ps_index]);
-
-        LOG(INFO) << "update sparse placement, varname: " << varname
-                  << ", ps_index: " << ps_index
-                  << ", ps: " << ps_eps_[ps_index];
       } else {
         LOG(ERROR) << "out of range, ps_index: " << ps_index
                    << ", ps_eps_.size(): " << ps_eps_.size();

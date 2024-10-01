@@ -1,30 +1,29 @@
+#include "auto_shard.h"
+
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <string>
-#include <vector>
-#include <fstream>
-#include <cstdlib>
-#include <iomanip>
-#include <ctime>
-#include <cmath>
 #include <unordered_map>
-#include "absl/types/optional.h"
+#include <vector>
+
 #include "absl/strings/str_join.h"
-#include "auto_shard.h"
-#include "trainer/core/proto/meta.pb.h"
-#include "trainer/core/base/util.h"
+#include "absl/types/optional.h"
 #include "glog/logging.h"
 #include "include/json/json.h"
+#include "trainer/core/base/util.h"
+#include "trainer/core/proto/meta.pb.h"
 #include "trainer/core/util/placement/auto_shard.h"
 
 namespace sniper {
 
 void AutoShard::init(int ps_count,
                      const std::vector<std::vector<size_t>>& origin_ps_shard,
-                     int top_ps,
-                     int top_field,
-                     int field_shard_limit,
-                     int update_shard_limit,
-                     int step_limit,
+                     int top_ps, int top_field, int field_shard_limit,
+                     int update_shard_limit, int step_limit,
                      bool is_move_shard) {
   ps_count_ = ps_count;
   origin_ps_shard_ = origin_ps_shard;
@@ -50,7 +49,8 @@ void AutoShard::clear() {
   ps_request_count_ = 0;
 }
 
-void AutoShard::add_lookup_info(size_t ps_index, size_t field, uint64_t time_spend) {
+void AutoShard::add_lookup_info(size_t ps_index, size_t field,
+                                uint64_t time_spend) {
   if (ps_index < lookup_infos_.size()) {
     if (lookup_infos_[ps_index].size() > lookup_info_limit_) {
       return;
@@ -63,10 +63,11 @@ void AutoShard::add_lookup_info(size_t ps_index, size_t field, uint64_t time_spe
   }
 }
 
-void AutoShard::add_time_spend(const std::unordered_map<std::string, size_t>& ps_to_index,
-                               const std::unordered_map<std::string, std::vector<std::string>>& ps_varnames,
-                               const std::string& ps_name,
-                               const EmbeddingLookupOption& option) {
+void AutoShard::add_time_spend(
+    const std::unordered_map<std::string, size_t>& ps_to_index,
+    const std::unordered_map<std::string, std::vector<std::string>>&
+        ps_varnames,
+    const std::string& ps_name, const EmbeddingLookupOption& option) {
   ps_request_count_ += 1;
 
   auto it_ps_index = ps_to_index.find(ps_name);
@@ -82,9 +83,10 @@ void AutoShard::add_time_spend(const std::unordered_map<std::string, size_t>& ps
           }
         }
       } else {
-        LOG(INFO) << "varnames.size() != option.time_spends_size(), varnames.size(): "
-                  << varnames.size()
-                  << ", option.time_spends_size(): " << option.time_spends_size();
+        LOG(INFO)
+            << "varnames.size() != option.time_spends_size(), varnames.size(): "
+            << varnames.size()
+            << ", option.time_spends_size(): " << option.time_spends_size();
       }
     } else {
       LOG(INFO) << "cannot find varnames, ps_name: " << ps_name;
@@ -130,16 +132,19 @@ std::vector<std::vector<size_t>> AutoShard::compute_shard() {
       if (ps_index < ps_field_load.size()) {
         size_t field = lookup_infos_[ps_index][j].field;
 
-        ps_load[ps_index] = std::max(ps_load[ps_index], lookup_infos_[ps_index][j].time_spend);
+        ps_load[ps_index] =
+            std::max(ps_load[ps_index], lookup_infos_[ps_index][j].time_spend);
 
         if (field < ps_field_load[ps_index].size()) {
           total_each_field[field] += 1;
 
-          ps_field_load[ps_index][field] += lookup_infos_[ps_index][j].time_spend;
+          ps_field_load[ps_index][field] +=
+              lookup_infos_[ps_index][j].time_spend;
         } else {
           LOG(INFO) << "out of range, field: " << field
                     << ", ps_index: " << ps_field_load[ps_index].size()
-                    << ", ps_field_load[ps_index].size(): " << ps_field_load[ps_index].size();
+                    << ", ps_field_load[ps_index].size(): "
+                    << ps_field_load[ps_index].size();
         }
       }
     }
@@ -153,10 +158,10 @@ std::vector<std::vector<size_t>> AutoShard::compute_shard() {
       }
     }
 
-    LOG(INFO) << "ps_index: " << ps_index
-              << ", ps_load: " << ps_load[ps_index]
+    LOG(INFO) << "ps_index: " << ps_index << ", ps_load: " << ps_load[ps_index]
               << ", total_each_field: " << absl::StrJoin(total_each_field, ",")
-              << ", ps_field_load: " << absl::StrJoin(ps_field_load[ps_index], ",");
+              << ", ps_field_load: "
+              << absl::StrJoin(ps_field_load[ps_index], ",");
   }
 
   std::vector<std::pair<size_t, uint64_t>> ps_load_pair;
@@ -164,12 +169,11 @@ std::vector<std::vector<size_t>> AutoShard::compute_shard() {
     ps_load_pair.emplace_back(i, ps_load[i]);
   }
 
-  // 降序排，第一个最大
-  std::sort(ps_load_pair.begin(),
-            ps_load_pair.end(),
-            [](const std::pair<size_t, uint64_t>& a, const std::pair<size_t, uint64_t>& b) { 
-                return a.second > b.second; 
-             });
+  // Sort in descending order, with the largest value first
+  std::sort(
+      ps_load_pair.begin(), ps_load_pair.end(),
+      [](const std::pair<size_t, uint64_t>& a,
+         const std::pair<size_t, uint64_t>& b) { return a.second > b.second; });
 
   origin_ps_shard_ = new_ps_shard_;
 
@@ -179,12 +183,12 @@ std::vector<std::vector<size_t>> AutoShard::compute_shard() {
       field_load_pair.emplace_back(j, ps_field_load[i][j]);
     }
 
-    // 降序排，第一个最大
-    std::sort(field_load_pair.begin(),
-              field_load_pair.end(),
-              [](const std::pair<size_t, uint64_t>& a, const std::pair<size_t, uint64_t>& b) { 
-                return a.second > b.second; 
-             });
+    // Sort in descending order, with the largest value first
+    std::sort(field_load_pair.begin(), field_load_pair.end(),
+              [](const std::pair<size_t, uint64_t>& a,
+                 const std::pair<size_t, uint64_t>& b) {
+                return a.second > b.second;
+              });
 
     for (size_t j = 0; j < top_field_; j++) {
       if (ps_count_ - 1 - i < ps_load_pair.size()) {
@@ -196,7 +200,8 @@ std::vector<std::vector<size_t>> AutoShard::compute_shard() {
 
         absl::optional<size_t> target_ps;
         for (int k = ps_count_ - 1 - i; k >= 0; k--) {
-          if (!is_in_vector(ps_load_pair[k].first, new_ps_shard_[target_field])) {
+          if (!is_in_vector(ps_load_pair[k].first,
+                            new_ps_shard_[target_field])) {
             target_ps.emplace(ps_load_pair[k].first);
             break;
           }
@@ -242,7 +247,7 @@ void AutoShard::update_placements() {
     if (placements_[i] != nullptr) {
       placements_[i]->UpdateSparsePlacement(new_ps_shard_);
     } else {
-      LOG(INFO) << "something is wrong, placement is nullptr! i: " <<  i;
+      LOG(INFO) << "something is wrong, placement is nullptr! i: " << i;
     }
   }
 
@@ -251,9 +256,8 @@ void AutoShard::update_placements() {
 }
 
 std::vector<std::vector<size_t>> AutoShard::compute_new_alloc_shard(
-  const std::vector<std::vector<size_t>>& new_ps_shard,
-  const std::vector<std::vector<size_t>>& origin_ps_shard) {
-
+    const std::vector<std::vector<size_t>>& new_ps_shard,
+    const std::vector<std::vector<size_t>>& origin_ps_shard) {
   // field -> [ps_index]
   std::vector<std::vector<size_t>> res(sparse_count_);
 
@@ -287,7 +291,8 @@ std::vector<std::vector<size_t>> AutoShard::compute_new_alloc_shard(
   return res;
 }
 
-void AutoShard::save_new_shard(const std::string& dirname, const std::string& model_name) {
+void AutoShard::save_new_shard(const std::string& dirname,
+                               const std::string& model_name) {
   if (is_already_save_) {
     return;
   }
@@ -312,12 +317,14 @@ void AutoShard::save_new_shard(const std::string& dirname, const std::string& mo
     auto tm = *std::localtime(&t);
     std::ostringstream oss;
     oss << std::put_time(&tm, "%d%m%Y%H%M%S");
-    std::string backup_filename = dirname + "/" + model_name + "_auto_shard_" + oss.str() + ".json";
+    std::string backup_filename =
+        dirname + "/" + model_name + "_auto_shard_" + oss.str() + ".json";
     std::ofstream ofs_backup(backup_filename);
     if (ofs_backup.is_open()) {
       ofs_backup << ifs.rdbuf();
       ofs_backup.close();
-      LOG(INFO) << "find auto_shard json, save to backup_filename: " << backup_filename;
+      LOG(INFO) << "find auto_shard json, save to backup_filename: "
+                << backup_filename;
     }
     ifs.close();
   }

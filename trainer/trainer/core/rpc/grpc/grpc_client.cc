@@ -351,6 +351,30 @@ RpcHandlePtr GRPCClient::UpdateHubShardAsync(
   return h;
 }
 
+RpcHandlePtr GRPCClient::UpdatePsShardAsync(
+    const std::string& ep, const ::google::protobuf::Message& options,
+    int64_t timeout_in_ms) {
+  TensorMessage msg;
+  msg.set_role(ROLE_TRAINER);
+  msg.set_role_id(role_id_);
+  msg.set_seq_id(0);
+  msg.set_varname("");
+  msg.mutable_options()->PackFrom(options);
+
+  ::grpc::ByteBuffer req;
+  EncodeTensorMessageToByteBuffer(msg, &req);
+
+  RpcHandlePtr h(new RpcHandle(ep, kUpdatePsShardRPC, "UpdatePsShard"));
+  const auto ch = GetChannel(ep);
+  VoidProcessor* c =
+      new VoidProcessor(ch, "/sniper.Sniper/UpdatePsShard", req,
+                        FLAGS_rpc_retry_times, h, timeout_in_ms, GetCq());
+  c->Prepare();
+  c->StartCall();
+  return h;
+}
+
+
 RpcHandlePtr GRPCClient::HeartbeatAsync(
     const std::string& ep, const ::google::protobuf::Message& options,
     TensorResponse* response, int64_t timeout_in_ms) {

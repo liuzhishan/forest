@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use dashmap::{DashMap, DashSet};
+use likely_stable::unlikely;
 use log::{error, info};
 use std::time::Duration;
 use util::error_bail;
@@ -116,8 +117,8 @@ impl FinishRecord {
             Ok(())
         } else {
             Err(anyhow!(format!(
-                "unsupported checkpoint_type: {}",
-                checkpoint_type.as_str_name().clone()
+                "unsupported checkpoint_target: {}",
+                checkpoint_target.as_str_name().clone()
             )))
         }
     }
@@ -134,7 +135,10 @@ impl FinishRecord {
             }
         }
 
-        info!("check_record: version: {}, is_finished: {}, is_success: {}", version, is_finished, is_success);
+        info!(
+            "check_record: version: {}, is_finished: {}, is_success: {}",
+            version, is_finished, is_success
+        );
         (is_finished, is_finished)
     }
 }
@@ -184,18 +188,23 @@ impl SaveStateNotifier {
                             ckp_st.shard_idx = checkpoint_context.shard_index;
                             ckp_st.shard_num = checkpoint_context.shard_num;
 
-                            option.ckp_st.insert(ckp_st);
+                            let _ = option.ckp_st.insert(ckp_st);
 
                             let request =
                                 TensorMessage::with_option(Role::Ps, &checkpoint_context.varname, &mut option)?;
 
                             info!(
-                                 "send save state to scheduler ps, varname: {}, context: {:?}", 
+                                 "send save state to scheduler ps, varname: {}, context: {:?}",
                                  checkpoint_context.varname.clone(),
                                  checkpoint_context
                             );
 
-                            client.heartbeat(request).await;
+                            match client.heartbeat(request).await {
+                                Ok(_) => (),
+                                Err(err) => {
+                                    error!("send save state to scheduler ps failed! err: {}", err);
+                                }
+                            }
                         },
                         None => {
                             error!("save state sender is closed!");
@@ -314,10 +323,6 @@ impl Scheduler {
         });
     }
 
-    pub fn start(&mut self) {}
-
-    pub fn stop(&mut self) {}
-
     /// Maintain status of each checkpoint task after task is done.
     ///
     /// Update or remove version info based on parameters.
@@ -403,6 +408,9 @@ impl Scheduler {
     ) -> Result<(bool, bool)> {
         if checkpoint_target == CheckPointTarget::CkpTargetNfs {
             let mut success_count = 0;
+            let mut need_size = 0;
+
+            let mut missing_vars = Vec::new();
 
             // Get current success count.
             for x in self.full_version_stat.iter() {
@@ -417,45 +425,60 @@ impl Scheduler {
                         // If var is dense, there is only one shard.
                         if var.value().len() == 1 {
                             success_count += 1;
+                        } else {
+                            missing_vars.push(format!("dense var: {}", var.key().clone()));
                         }
+
+                        need_size += 1;
                     } else {
                         // If var is sparse, need to get ps shard count.
                         match self.ps_shard.get(var.key()) {
                             Some(v) => {
                                 if var.value().len() == v.len() {
                                     success_count += v.len();
+                                } else {
+                                    success_count += var.value().len();
+
+                                    missing_vars.push(format!(
+                                        "sparse var: {} missing {} shards, expect {}, actual {}",
+                                        var.key().clone(),
+                                        v.len() - var.value().len(),
+                                        v.len(),
+                                        var.value().len()
+                                    ));
                                 }
-                            },
+
+                                need_size += v.len();
+                            }
                             None => {
-                                error!(
-                                    "cannot find var in sparse ps shard: {}",
-                                    var.key().clone()
-                                );
+                                error!("cannot find var in sparse ps shard: {}", var.key().clone());
                             }
                         }
                     }
                 }
             }
 
-            let need_size = self.sparse_vars.len() + self.dense_vars.len();
+            let is_success = success_count == need_size;
 
             info!(
-                "[Scheculer.check_checkpoint_status] check status, version: {}, success_count: {}, need_size: {}",
+                "check_checkpoint_status, version: {}, success_count: {}, need_size: {}, is_success: {}",
                 version,
                 success_count,
-                need_size
+                need_size,
+                is_success
             );
 
-            if success_count == need_size {
+            if is_success {
                 self.finish_records.write().add_record(
                     version,
                     true,
                     CheckPointTarget::CkpTargetNfs,
-                    CheckPointType::CkpTypeFull
+                    CheckPointType::CkpTypeFull,
                 );
 
                 Ok((true, true))
             } else {
+                info!("check_checkpoint_status: missing_vars: {:?}", missing_vars);
                 Ok((false, false))
             }
         } else {
@@ -464,5 +487,36 @@ impl Scheduler {
                 checkpoint_target.as_str_name().clone()
             )))
         }
+    }
+
+    /// Update ps shard by index.
+    pub fn update_ps_shard(&mut self, shard: &Vec<Vec<i32>>) -> Result<()> {
+        for (i, shard_vec) in shard.iter().enumerate() {
+            let varname = format!("embedding_{}", i);
+
+            if unlikely(
+                shard_vec
+                    .iter()
+                    .any(|x| *x < 0 || *x >= self.ps_endpoints.len() as i32),
+            ) {
+                error_bail!("ps shard index out of range! shard: {:?}", shard_vec);
+            }
+
+            let ps_names: Vec<String> = shard_vec
+                .iter()
+                .map(|x| self.ps_endpoints[*x as usize].clone())
+                .collect();
+
+            info!(
+                "update ps shard, varname: {}, shard_vec: {:?}, ps_names: {:?}",
+                varname.clone(),
+                shard_vec.clone(),
+                ps_names.clone()
+            );
+
+            self.ps_shard.insert(varname, ps_names);
+        }
+
+        Ok(())
     }
 }

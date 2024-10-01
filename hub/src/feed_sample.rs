@@ -1,9 +1,11 @@
+use std::sync::{Arc, Mutex};
+
 use anyhow::{anyhow, bail, Result};
 use grpc::sniper::{FeedFieldInfo, GpuPsFeature64, Role, StartSampleOption, TensorMessage};
 use log::{error, info};
 
 use hashbrown::HashMap;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 
 use prost::Message;
 use prost_types::Any;
@@ -13,6 +15,8 @@ use util::{error_bail, get_target_shard_by_sign, FeaturePlacement};
 
 use coarsetime::{Duration, Instant, Updater};
 use util::histogram::{record_time, Histogram, HistogramType};
+
+use crate::auto_shard_updater::AutoShardUpdater;
 
 use super::sample::SampleBatch;
 use grpc::sniper::TensorProto;
@@ -32,7 +36,7 @@ pub struct FeedSample {
     sample_batch_receiver: async_channel::Receiver<SampleBatch>,
 
     /// FeaturePlacement is used to determine which ps each var live in.
-    feature_placement: FeaturePlacement,
+    feature_placement: Arc<Mutex<FeaturePlacement>>,
 
     /// Total batch.
     total_batch: i64,
@@ -58,7 +62,12 @@ impl FeedSample {
         trainer_data_sender: async_channel::Sender<SampleBatch>,
         ps_endpoints: &Vec<String>,
         histogram: Histogram,
+        ps_shard_receiver: broadcast::Receiver<Vec<Vec<i32>>>,
     ) -> Self {
+        let feature_placement = Arc::new(Mutex::new(feature_placement));
+
+        Self::start_auto_shard_updater_job(feature_placement.clone(), ps_shard_receiver);
+
         Self {
             option,
             sample_batch_receiver,
@@ -69,6 +78,25 @@ impl FeedSample {
             ps_clients: HashMap::new(),
             histogram,
         }
+    }
+
+    /// Start auto shard updater thread.
+    pub fn start_auto_shard_updater_job(
+        feature_placement: Arc<Mutex<FeaturePlacement>>,
+        ps_shard_receiver: broadcast::Receiver<Vec<Vec<i32>>>,
+    ) {
+        let auto_shard_updater = AutoShardUpdater::new(feature_placement, ps_shard_receiver);
+
+        tokio::spawn(async move {
+            Toplevel::new(|s| async move {
+                s.start(SubsystemBuilder::new("auto_shard_updater", |a| {
+                    auto_shard_updater.run(a)
+                }));
+            })
+            .catch_signals()
+            .handle_shutdown_requests(std::time::Duration::from_millis(1000))
+            .await
+        });
     }
 
     /// Initialize.
@@ -257,7 +285,9 @@ impl FeedSample {
         let total_signs = signs.len();
 
         // Get ps shard.
-        let shard_endpoints_opt = self.feature_placement.get_emb_placement(embedding_varname);
+        let feature_placement = self.feature_placement.lock().unwrap();
+        let shard_endpoints_opt = feature_placement.get_emb_placement(embedding_varname);
+
         if shard_endpoints_opt.is_none() {
             error_bail!(
                 "cannot get shard_endpoints for varname: {}",

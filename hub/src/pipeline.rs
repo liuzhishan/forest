@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use log::{error, info};
 
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tokio::time::{sleep, Duration};
 use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
 
@@ -40,6 +40,16 @@ pub struct SingleSamplePipeline {
 
     /// Histogram statistics.
     histogram: Histogram,
+
+    /// Sender for ps shard.
+    ///
+    /// Why use sender instead of receiver?
+    ///
+    /// Because we need to create ps shard task in new thread, and `broadcast` need
+    /// all receivers to consume the data, so all receivers must be in use. If we
+    /// use receiver here, the receiver will be never used. So we need to create
+    /// receiver from `sender.subscribe()` to avoid this problem.
+    ps_shard_sender: broadcast::Sender<Vec<Vec<i32>>>,
 }
 
 impl SingleSamplePipeline {
@@ -47,6 +57,7 @@ impl SingleSamplePipeline {
         option: StartSampleOption,
         sample_batch_sender: async_channel::Sender<SampleBatch>,
         histogram: Histogram,
+        ps_shard_sender: broadcast::Sender<Vec<Vec<i32>>>,
     ) -> Self {
         Self {
             option,
@@ -55,6 +66,7 @@ impl SingleSamplePipeline {
             feature_queue_size: 2048,
             sample_batch_queue_size: 100,
             histogram,
+            ps_shard_sender,
         }
     }
 
@@ -196,6 +208,7 @@ impl SingleSamplePipeline {
                 self.sample_batch_sender.clone(),
                 ps_endpoints,
                 self.histogram.clone(),
+                self.ps_shard_sender.subscribe(),
             );
 
             if !feed_sample.init().await {
@@ -225,6 +238,9 @@ pub struct GroupSamplePipeline {
 
     /// Histogram statistics.
     histogram: Histogram,
+
+    /// Sender for ps shard.
+    ps_shard_sender: broadcast::Sender<Vec<Vec<i32>>>,
 }
 
 impl GroupSamplePipeline {
@@ -232,11 +248,13 @@ impl GroupSamplePipeline {
         option: StartSampleOption,
         sample_batch_sender: async_channel::Sender<SampleBatch>,
         histogram: Histogram,
+        ps_shard_sender: broadcast::Sender<Vec<Vec<i32>>>,
     ) -> Self {
         Self {
             option,
             sample_batch_sender,
             histogram,
+            ps_shard_sender,
         }
     }
 

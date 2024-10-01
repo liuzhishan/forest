@@ -22,8 +22,12 @@
 namespace sniper {
 namespace ops {
 
-FeedQueue::FeedQueue(const std::string& conf_file, int32_t trainer_id, int32_t work_mode)
-    : conf_file_(conf_file), trainer_id_(trainer_id), work_mode_(work_mode), ready_to_consume_(false) {
+FeedQueue::FeedQueue(const std::string& conf_file, int32_t trainer_id,
+                     int32_t work_mode)
+    : conf_file_(conf_file),
+      trainer_id_(trainer_id),
+      work_mode_(work_mode),
+      ready_to_consume_(false) {
   train_config_ = TrainConfig::GetInstance(conf_file_, trainer_id_);
   hub_eps_ = train_config_->hub_eps();
   hub_over_.assign(hub_eps_.size(), false);
@@ -36,21 +40,22 @@ FeedQueue::FeedQueue(const std::string& conf_file, int32_t trainer_id, int32_t w
   }
 
   use_auto_shard_ = train_config_->use_auto_shard();
-  AutoShard::instance().init(train_config_->ps_eps().size(), train_config_->ps_shard_by_field(),
-                             train_config_->top_ps(), train_config_->top_field(),
-                             train_config_->field_shard_limit(), train_config_->update_shard_limit(),
-                             train_config_->step_limit(), train_config_->is_move_shard());
+  AutoShard::instance().init(
+      train_config_->ps_eps().size(), train_config_->ps_shard_by_field(),
+      train_config_->top_ps(), train_config_->top_field(),
+      train_config_->field_shard_limit(), train_config_->update_shard_limit(),
+      train_config_->step_limit(), train_config_->is_move_shard());
 
   init();
   LOG(INFO) << "Trainer feed queue created. trainer_id: " << trainer_id_
             << ", hub_eps_size: " << hub_eps_.size()
-            << ", parallel: " << parallel_
-            << ", queue_size: " << queue_size_
+            << ", parallel: " << parallel_ << ", queue_size: " << queue_size_
             << ", work_mode: " << work_mode_;
 }
 
 void FeedQueue::init() {
-  rpc_client_ = rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);  // trainer_id
+  rpc_client_ =
+      rpc::RPCClient::GetInstance<rpc::GRPCClient>(trainer_id_);  // trainer_id
 
   for (int i = 0; i < parallel_; ++i) {
     threads_.push_back(new std::thread(&FeedQueue::consume, this, i));
@@ -64,10 +69,11 @@ void FeedQueue::init() {
           break;
         }
         if (queue_.size() < 5) {
-          LOG(WARNING) << "Trainer feed queue is not rich. trainer_id: " << trainer_id_
-                       << ", queue.size(): " << queue_.size()
-                       << ", training will bound at prefetch, "
-                       << " you can check trainer network and hub / ps resource.";
+          LOG(WARNING)
+              << "Trainer feed queue is not rich. trainer_id: " << trainer_id_
+              << ", queue.size(): " << queue_.size()
+              << ", training will bound at prefetch, "
+              << " you can check trainer network and hub / ps resource.";
 
         } else {
           LOG(INFO) << "trainer_id: " << trainer_id_
@@ -170,7 +176,10 @@ void FeedQueue::consume(int thread_id) {
     if (use_auto_shard_) {
       // 更新 shard
       if (!auto_shard.is_finish() && auto_shard.is_ready()) {
+        is_done_shard_ = false;
         if (thread_id == 0) {
+          LOG(INFO) << "thread_id 0, update shard start";
+
           std::unique_lock<std::mutex> lk_shard(mu_shard_);
 
           is_in_update_shard = true;
@@ -182,9 +191,10 @@ void FeedQueue::consume(int thread_id) {
           is_done_shard_ = true;
           is_in_update_shard = false;
 
-          LOG(INFO) << "update ps_shard one time, update_time: " << auto_shard.update_time();
           lk_shard.unlock();
           cv_shard_.notify_all();
+
+          LOG(INFO) << "thread_id 0, update shard done";
         } else {
           std::unique_lock<std::mutex> lk_shard(mu_shard_);
           cv_shard_.wait(lk_shard, [this] { return is_done_shard_; });
@@ -192,7 +202,8 @@ void FeedQueue::consume(int thread_id) {
       } else if (auto_shard.is_finish()) {
         if (thread_id == 0) {
           if (!auto_shard.is_already_save()) {
-            auto_shard.save_new_shard(train_config_->dirname(), train_config_->model_name());
+            auto_shard.save_new_shard(train_config_->dirname(),
+                                      train_config_->model_name());
           }
         }
       }
@@ -231,14 +242,18 @@ void FeedQueue::consume(int thread_id) {
 
       auto& tmp_dense = response.tensor2();
       if (tmp_dense.dtype() == tensorflow::DT_BFLOAT16) {
-        feature->dense_tensor = tensorflow::Tensor(tensorflow::DT_FLOAT, tmp_dense.shape());
-        tensorflow::BFloat16ToFloat(tmp_dense.flat<tensorflow::bfloat16>().data(),
-                                    feature->dense_tensor.flat<float>().data(), tmp_dense.NumElements());
+        feature->dense_tensor =
+            tensorflow::Tensor(tensorflow::DT_FLOAT, tmp_dense.shape());
+        tensorflow::BFloat16ToFloat(
+            tmp_dense.flat<tensorflow::bfloat16>().data(),
+            feature->dense_tensor.flat<float>().data(),
+            tmp_dense.NumElements());
       } else {
         feature->dense_tensor = tmp_dense;
       }
 
-      feature->debug_info = tensorflow::Tensor(tensorflow::DT_STRING, {train_config_->batch_size()});
+      feature->debug_info = tensorflow::Tensor(tensorflow::DT_STRING,
+                                               {train_config_->batch_size()});
       if (train_config_->debug_info().size() > 0) {
         auto debug_data = feature->debug_info.flat<std::string>();
         for (size_t i = 0; i < train_config_->batch_size(); i++) {
@@ -249,21 +264,25 @@ void FeedQueue::consume(int thread_id) {
       auto end = std::chrono::steady_clock::now();
       monitor::RunStatus::Instance()->PushTime(
           monitor::kOpsReadSample,
-          std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+          std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+              .count());
     }
 
     // type && dim check
-    if (feature->label_tensor.dim_size(0) != label_size || feature->label_tensor.dim_size(1) != batch_size) {
-      LOG(WARNING) << "Trainer label tensor shape not match, trainer_id: " << trainer_id_
-                   << ",  label shape: " << feature->label_tensor.shape().DebugString()
+    if (feature->label_tensor.dim_size(0) != label_size ||
+        feature->label_tensor.dim_size(1) != batch_size) {
+      LOG(WARNING) << "Trainer label tensor shape not match, trainer_id: "
+                   << trainer_id_ << ",  label shape: "
+                   << feature->label_tensor.shape().DebugString()
                    << ", config batch_size: " << batch_size
-                   << ", label_size: "  << label_size;
+                   << ", label_size: " << label_size;
       continue;
     }
     if (feature->dense_tensor.dim_size(0) != batch_size ||
         feature->dense_tensor.dim_size(1) != dense_total_size) {
-      LOG(WARNING) << "Trainer dense tensor shape not match, trainer_id: " << trainer_id_
-                   << ", dense label shape: " << feature->dense_tensor.shape().DebugString()
+      LOG(WARNING) << "Trainer dense tensor shape not match, trainer_id: "
+                   << trainer_id_ << ", dense label shape: "
+                   << feature->dense_tensor.shape().DebugString()
                    << ", config batch_size: " << batch_size
                    << ", dense_total_size: " << dense_total_size;
       continue;
@@ -316,19 +335,18 @@ void FeedQueue::consume(int thread_id) {
         *(option.mutable_field_idx()) = {var_idx.begin(), var_idx.end()};
         *(option.mutable_field_dim()) = {var_size.begin(), var_size.end()};
 
-        auto hdl =
-            rpc_client_->EmbeddingLookupAsync(ep, batch_id, ps_join_varname, option, tensorflow::Tensor(),
-                                              tensorflow::Tensor(), &(responses[ep]));
+        auto hdl = rpc_client_->EmbeddingLookupAsync(
+            ep, batch_id, ps_join_varname, option, tensorflow::Tensor(),
+            tensorflow::Tensor(), &(responses[ep]));
         hdls.push_back(hdl);
       }
 
       bool lookup_ok = true;
       for (auto& h : hdls) {
         if (!h->Wait()) {
-          LOG(WARNING) << "Trainer embedding lookup fail, trainer_id: " << trainer_id_
-                       << ", batch_id: " << batch_id
-                       << ", ep: " << h->ep()
-                       << ", errmsg: " << h->errmsg();
+          LOG(WARNING) << "Trainer embedding lookup fail, trainer_id: "
+                       << trainer_id_ << ", batch_id: " << batch_id
+                       << ", ep: " << h->ep() << ", errmsg: " << h->errmsg();
 
           lookup_ok = false;
           break;
@@ -346,10 +364,9 @@ void FeedQueue::consume(int thread_id) {
         EmbeddingLookupOption option;
         resp.meta().options().UnpackTo(&option);
         if (!option.errmsg().empty()) {
-          LOG(WARNING) << "Trainer embedding lookup fail, trainer_id: " << trainer_id_
-                       << ", batch_id: " << batch_id
-                       << ", ep: " << ep
-                       << ", errmsg: " << option.errmsg();
+          LOG(WARNING) << "Trainer embedding lookup fail, trainer_id: "
+                       << trainer_id_ << ", batch_id: " << batch_id
+                       << ", ep: " << ep << ", errmsg: " << option.errmsg();
 
           lookup_ok = false;
           break;
@@ -365,11 +382,14 @@ void FeedQueue::consume(int thread_id) {
         auto& lookup_ret = resp.tensor1();
 
         auto var_total_size = ps_var_total_size[ep];
-        if (lookup_ret.dim_size(0) != batch_size || lookup_ret.dim_size(1) != var_total_size) {
-          LOG(WARNING) << "Trainer lookup ret tensor shape not match, trainer_id: " << trainer_id_
-                       << ", tensor shape: " << lookup_ret.shape().DebugString()
-                       << ", batch_size: " << batch_size
-                       << ", total_size: " << var_total_size;
+        if (lookup_ret.dim_size(0) != batch_size ||
+            lookup_ret.dim_size(1) != var_total_size) {
+          LOG(WARNING)
+              << "Trainer lookup ret tensor shape not match, trainer_id: "
+              << trainer_id_
+              << ", tensor shape: " << lookup_ret.shape().DebugString()
+              << ", batch_size: " << batch_size
+              << ", total_size: " << var_total_size;
 
           lookup_ok = false;
           break;
@@ -378,19 +398,24 @@ void FeedQueue::consume(int thread_id) {
         // dequantization
         tensorflow::Tensor float_lookup_ret;
         if (lookup_ret.dtype() == tensorflow::DT_BFLOAT16) {
-          float_lookup_ret = tensorflow::Tensor(tensorflow::DT_FLOAT, lookup_ret.shape());
-          tensorflow::BFloat16ToFloat(lookup_ret.flat<tensorflow::bfloat16>().data(),
-                                      float_lookup_ret.flat<float>().data(), lookup_ret.NumElements());
+          float_lookup_ret =
+              tensorflow::Tensor(tensorflow::DT_FLOAT, lookup_ret.shape());
+          tensorflow::BFloat16ToFloat(
+              lookup_ret.flat<tensorflow::bfloat16>().data(),
+              float_lookup_ret.flat<float>().data(), lookup_ret.NumElements());
         } else {
           float_lookup_ret = lookup_ret;
         }
         auto float_lookup_flat = float_lookup_ret.flat<float>();
 
-        if (float_lookup_ret.dim_size(0) != batch_size || float_lookup_ret.dim_size(1) != var_total_size) {
-          LOG(WARNING) << "Trainer float lookup ret tensor shape not match, trainer_id: " << trainer_id_
-                       << ", tensor shape: " << float_lookup_ret.shape().DebugString()
-                       << ", batch_size: " << batch_size
-                       << ", total_size: " << var_total_size;
+        if (float_lookup_ret.dim_size(0) != batch_size ||
+            float_lookup_ret.dim_size(1) != var_total_size) {
+          LOG(WARNING)
+              << "Trainer float lookup ret tensor shape not match, trainer_id: "
+              << trainer_id_
+              << ", tensor shape: " << float_lookup_ret.shape().DebugString()
+              << ", batch_size: " << batch_size
+              << ", total_size: " << var_total_size;
 
           lookup_ok = false;
           break;
@@ -415,14 +440,13 @@ void FeedQueue::consume(int thread_id) {
 
           if (shard_num == 1) {
             for (int j = 0; j < batch_size; ++j) {
-              std::copy_n(float_lookup_flat.data() + j * var_total_size + idx, size,
-                          var_lookup_flat.data() + j * size);
+              std::copy_n(float_lookup_flat.data() + j * var_total_size + idx,
+                          size, var_lookup_flat.data() + j * size);
             }
           } else {
             for (int j = 0; j < batch_size; ++j) {
               Sum(float_lookup_flat.data() + j * var_total_size + idx,
-                  var_lookup_flat.data() + j * size,
-                  size);
+                  var_lookup_flat.data() + j * size, size);
             }
           }
           idx += size;
@@ -438,7 +462,8 @@ void FeedQueue::consume(int thread_id) {
       auto end = std::chrono::steady_clock::now();
       monitor::RunStatus::Instance()->PushTime(
           monitor::kOpsEmbeddingLookup,
-          std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+          std::chrono::duration_cast<std::chrono::microseconds>(end - start)
+              .count());
     }
 
     // type && dim check
@@ -448,7 +473,8 @@ void FeedQueue::consume(int thread_id) {
         LOG(WARNING) << "Trainer feature lookup ret shape not match"
                      << ", trainer_id: " << trainer_id_
                      << ", input_sparse: " << input_sparse[i]
-                     << ", tensor shape: " << feature->embedding_tensor[i].shape().DebugString()
+                     << ", tensor shape: "
+                     << feature->embedding_tensor[i].shape().DebugString()
                      << ", batch_size: " << batch_size
                      << ", dim: " << input_sparse_dim[i];
 
@@ -515,11 +541,20 @@ void FeedQueue::set_hub_over(int32_t idx) {
 
 bool FeedQueue::update_shard() {
   auto& auto_shard = AutoShard::instance();
+
   std::vector<std::vector<size_t>> new_shard = auto_shard.compute_shard();
+
+  for (size_t i = 0; i < new_shard.size(); i++) {
+    LOG(INFO) << "update shard, field: " << i
+              << ", shard: " << absl::StrJoin(new_shard[i], ",");
+  }
+
   train_config_->placement()->UpdateSparsePlacement(new_shard);
 
-  const std::vector<std::vector<size_t>>& new_alloc_shard = auto_shard.new_alloc_shard();
-  const std::vector<std::vector<size_t>>& origin_ps_shard = auto_shard.origin_ps_shard();
+  const std::vector<std::vector<size_t>>& new_alloc_shard =
+      auto_shard.new_alloc_shard();
+  const std::vector<std::vector<size_t>>& origin_ps_shard =
+      auto_shard.origin_ps_shard();
 
   const auto& ps_eps = train_config_->ps_eps();
 
@@ -535,14 +570,15 @@ bool FeedQueue::update_shard() {
     for (size_t i = 0; i < new_alloc_shard[field].size(); i++) {
       size_t ps_index = new_alloc_shard[field][i];
       if (ps_index >= ps_eps.size()) {
-        LOG(INFO) << "out of range, ps_index: " << ps_index << ", ps_eps.size(): " << ps_eps.size();
+        LOG(INFO) << "out of range, ps_index: " << ps_index
+                  << ", ps_eps.size(): " << ps_eps.size();
         continue;
       }
       const auto& ps_name = ps_eps[ps_index];
 
       std::string varname = std::string("embedding_") + std::to_string(field);
-      absl::optional<CreateOption> option =
-          get_create_option(varname, train_config_, i, new_alloc_shard[field].size());
+      absl::optional<CreateOption> option = get_create_option(
+          varname, train_config_, i, new_alloc_shard[field].size());
       if (option) {
         option->set_delete_var(false);
         auto h = rpc_client_->CreateAsync(ps_name, varname, *option, 180000);
@@ -556,37 +592,47 @@ bool FeedQueue::update_shard() {
     auto& h = hdls[i];
     auto& table_name = table_names[i];
     if (!h->Wait()) {
-      LOG(WARNING) << "recreate embedding_table[" << table_name << "] on ps[" << h->ep()
-                   << "] fail. errmsg=" << h->errmsg();
+      LOG(WARNING) << "recreate embedding_table[" << table_name << "] on ps["
+                   << h->ep() << "] fail. errmsg=" << h->errmsg();
       return false;
     } else {
-      LOG(INFO) << "recreate embedding_table[" << table_name << "] on ps[" << h->ep() << "] success.";
+      LOG(INFO) << "recreate embedding_table[" << table_name << "] on ps["
+                << h->ep() << "] success.";
     }
   }
 
   hdls.clear();
-  // update hub
+
+  UpdateShardOption shard_option;
+
+  auto mutable_shard = shard_option.mutable_ps_shard();
+  for (size_t field = 0; field < new_shard.size(); field++) {
+    auto last = mutable_shard->add_value();
+    for (size_t ps_index : new_shard[field]) {
+      last->add_value(ps_index);
+    }
+  }
+
+  auto h1 =
+      rpc_client_->UpdatePsShardAsync(train_config_->ps_eps()[0], shard_option);
+  hdls.push_back(h1);
+
+  // update hub and ps.
   for (size_t i = 0; i < hub_eps_.size(); i++) {
     const std::string& hub_name = hub_eps_[i];
-    UpdateHubShardOption hub_option;
 
-    hub_option.set_hub_idx(i);
-    auto mutable_shard = hub_option.mutable_ps_shard();
-    for (size_t field = 0; field < new_shard.size(); field++) {
-      auto last = mutable_shard->add_value();
-      for (size_t ps_index : new_shard[field]) {
-        last->add_value(ps_index);
-      }
-    }
+    auto hub_shard_option = shard_option;
+    hub_shard_option.set_hub_idx(i);
 
-    auto h = rpc_client_->UpdateHubShardAsync(hub_name, hub_option);
+    auto h = rpc_client_->UpdateHubShardAsync(hub_name, hub_shard_option);
     hdls.push_back(h);
   }
 
   for (size_t i = 0; i < hdls.size(); ++i) {
     auto& h = hdls[i];
     if (!h->Wait()) {
-      LOG(WARNING) << "update hub shard failed! hub_name: " << h->ep() << ", errmsg=" << h->errmsg();
+      LOG(WARNING) << "update hub shard failed! hub_name: " << h->ep()
+                   << ", errmsg=" << h->errmsg();
       return false;
     } else {
       LOG(WARNING) << "update hub shard success! hub_name: " << h->ep();
@@ -595,11 +641,13 @@ bool FeedQueue::update_shard() {
 
   hdls.clear();
   table_names.clear();
+
   // delete var
   for (size_t field = 0; field < new_alloc_shard.size(); field++) {
     if (new_alloc_shard[field].size() == 0) {
       continue;
     }
+
     if (field >= origin_ps_shard.size()) {
       LOG(INFO) << "out of range, field: " << field
                 << ", origin_ps_shard.size(): " << origin_ps_shard.size();
@@ -613,16 +661,19 @@ bool FeedQueue::update_shard() {
       }
 
       if (ps_index >= ps_eps.size()) {
-        LOG(INFO) << "out of range, ps_index: " << ps_index << ", ps_eps.size(): " << ps_eps.size();
+        LOG(INFO) << "out of range, ps_index: " << ps_index
+                  << ", ps_eps.size(): " << ps_eps.size();
         continue;
       }
       const auto& ps_name = ps_eps[ps_index];
       std::string varname = std::string("embedding_") + std::to_string(field);
 
-      absl::optional<CreateOption> option =
-          get_create_option(varname, train_config_, i, origin_ps_shard[field].size());
+      absl::optional<CreateOption> option = get_create_option(
+          varname, train_config_, i, origin_ps_shard[field].size());
       if (option) {
         option->set_delete_var(true);
+        LOG(INFO) << "recreate var: " << varname;
+
         auto h = rpc_client_->CreateAsync(ps_name, varname, *option, 180000);
         hdls.push_back(h);
         table_names.push_back(varname);
@@ -634,13 +685,15 @@ bool FeedQueue::update_shard() {
     auto& h = hdls[i];
     if (!h->Wait()) {
       if (i < table_names.size()) {
-        LOG(WARNING) << "delete var failed! ps_name: " << h->ep() << ", varname: " << table_names[i]
+        LOG(WARNING) << "delete var failed! ps_name: " << h->ep()
+                     << ", varname: " << table_names[i]
                      << ", errmsg=" << h->errmsg();
       }
       return false;
     } else {
       if (i < table_names.size()) {
-        LOG(WARNING) << "delete var success! ps_name: " << h->ep() << ", varname: " << table_names[i];
+        LOG(WARNING) << "delete var success! ps_name: " << h->ep()
+                     << ", varname: " << table_names[i];
       }
     }
   }
@@ -648,9 +701,9 @@ bool FeedQueue::update_shard() {
   return true;
 }
 
-absl::optional<CreateOption> FeedQueue::get_create_option(const std::string& varname,
-                                                          TrainConfig* train_config_ptr, int origin_idx,
-                                                          int origin_shard_num) {
+absl::optional<CreateOption> FeedQueue::get_create_option(
+    const std::string& varname, TrainConfig* train_config_ptr, int origin_idx,
+    int origin_shard_num) {
   if (train_config_ptr == nullptr) {
     return absl::nullopt;
   }
@@ -665,7 +718,8 @@ absl::optional<CreateOption> FeedQueue::get_create_option(const std::string& var
 
   CreateOption option;
   option.set_emb_size(table.dim());
-  option.set_capacity(static_cast<uint32_t>(table.capacity() / origin_shard_num));
+  option.set_capacity(
+      static_cast<uint32_t>(table.capacity() / origin_shard_num));
   option.set_type(VAR_EMBEDDING);
   option.mutable_fields()->CopyFrom(table.fields());
   option.set_hit_limit(table.hit_limit());

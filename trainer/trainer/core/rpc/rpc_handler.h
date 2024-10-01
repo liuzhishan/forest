@@ -28,6 +28,7 @@ constexpr char kSaveRPC[] = "SaveRPC";
 constexpr char kRestoreRPC[] = "RestoreRPC";
 constexpr char kFreezeRPC[] = "FreezeRPC";
 constexpr char kCompleteRPC[] = "CompleteRPC";
+constexpr char kUpdatePsShardRPC[] = "UpdatePsShardRPC";
 
 constexpr char kStartSampleRPC[] = "StartSampleRPC";
 constexpr char kReadSampleRPC[] = "ReadSampleRPC";

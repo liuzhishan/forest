@@ -77,6 +77,10 @@ class RPCClient {
       const std::string& ep, const ::google::protobuf::Message& options,
       int64_t timeout_in_ms = FLAGS_rpc_deadline) = 0;
 
+  virtual RpcHandlePtr UpdatePsShardAsync(
+      const std::string& ep, const ::google::protobuf::Message& options,
+      int64_t timeout_in_ms = FLAGS_rpc_deadline) = 0;
+
   virtual RpcHandlePtr HeartbeatAsync(
       const std::string& ep, const ::google::protobuf::Message& options,
       TensorResponse* response, int64_t timeout_in_ms = FLAGS_rpc_deadline) = 0;

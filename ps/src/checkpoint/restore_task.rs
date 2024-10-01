@@ -203,8 +203,10 @@ impl<R: FileReader> RestoreSparseTask<R> {
         for filename in filenames.iter() {
             if self.is_weight_file(filename) {
                 self.restore_weight(filename, embedding)?;
-            } else {
+            } else if self.is_adagrad_file(filename) {
                 self.restore_adagrad(filename, embedding)?;
+            } else {
+                // Ignore other files.
             }
         }
 
