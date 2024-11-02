@@ -1,5 +1,4 @@
-use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use clap::Parser;
 
 /// All command line flags.
 #[derive(Parser)]

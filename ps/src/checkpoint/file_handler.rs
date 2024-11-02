@@ -1,16 +1,12 @@
 //! File releated handler.
 
-use anyhow::{anyhow, bail, Result};
-use std::io::{BufRead, Lines};
+use anyhow::Result;
+use std::io::BufRead;
 use std::{fs::File, io::Write};
 
-use log::{error, info};
 use std::io::BufReader;
 
-use hdrs::Client;
 use hdrs::ClientBuilder;
-
-use util::error_bail;
 
 /// Trait for read file.
 ///

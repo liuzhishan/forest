@@ -1,17 +1,12 @@
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Error;
 use anyhow::Result;
 use log::{error, info};
-use prost::Message;
 
 use std::fs::File;
-use std::io::{self, prelude::*, BufReader};
+use std::io::{prelude::*, BufReader};
 use std::path::Path;
 
-use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
+use tokio_graceful_shutdown::SubsystemHandle;
 
-use grpc::sniper::SimpleFeatures;
 use util::histogram::Histogram;
 
 /// Read data from local.
@@ -53,7 +48,7 @@ impl LocalReader {
     }
 
     /// Read from filenames, and send line to the channel.
-    pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
+    pub async fn run(self, _subsys: SubsystemHandle) -> Result<()> {
         info!("LocalReader run start");
 
         for (_, filename) in self.filenames.iter().enumerate() {

@@ -1,12 +1,9 @@
-use anyhow::bail;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use grpc::sniper::sniper_client::SniperClient;
-use log::{error, info};
-
-use likely_stable::{likely, unlikely};
+use log::info;
 
 use local_ip_address::local_ip;
-use util::{error_bail, MESSAGE_LIMIT};
+use util::MESSAGE_LIMIT;
 
 pub const PS_SERVER_PORT: i32 = 34000;
 

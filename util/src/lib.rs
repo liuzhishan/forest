@@ -1,5 +1,5 @@
 #![feature(portable_simd)]
-use core::simd::prelude::*;
+#![allow(dead_code)]
 
 mod util;
 pub use util::*;

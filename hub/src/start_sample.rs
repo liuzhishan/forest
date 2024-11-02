@@ -1,7 +1,6 @@
-use anyhow::{bail, Result};
-use log::{error, info};
+use anyhow::Result;
 
-use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
+use tokio_graceful_shutdown::SubsystemHandle;
 
 use grpc::sniper::{SimpleFeatures, StartSampleOption};
 
@@ -33,7 +32,7 @@ impl StartSingleSample {
     }
 
     /// Process the data.
-    pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
+    pub async fn run(self, _subsys: SubsystemHandle) -> Result<()> {
         // TODO
         Ok(())
     }
@@ -65,7 +64,7 @@ impl StartGroupSample {
     }
 
     /// Process the data.
-    pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
+    pub async fn run(self, _subsys: SubsystemHandle) -> Result<()> {
         // TODO
         Ok(())
     }

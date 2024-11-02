@@ -1,13 +1,6 @@
-use std::default;
-
-use anyhow::{anyhow, bail, Result};
-use grpc::sniper::sniper_client::SniperClient;
-use log::{error, info};
+use anyhow::{anyhow, Result};
 
 use dashmap::DashMap;
-use dashmap::Map;
-use dashmap::SharedValue;
-use dashmap::{mapref::one::Ref, RawRwLock};
 
 /// Restore state.
 #[derive(Default, Clone)]

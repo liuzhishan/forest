@@ -24,27 +24,19 @@
 //! that the size of map will be too large to fit into the memory of `ps`. So we must
 //! use `LRUCache` to store the parameters.
 //!
-#![feature(portable_simd)]
-use core::simd::prelude::*;
-
-use grpc::sniper::EmbeddingLookupOption;
-use likely_stable::{likely, unlikely};
-use log::{error, info};
+use likely_stable::unlikely;
+use log::error;
 use std::collections::VecDeque;
-use std::hash::RandomState;
-use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
-use util::histogram;
 use util::histogram::record_time;
 use util::histogram::Histogram;
 use util::histogram::WithHistogram;
 use util::simd::sum_f32_vectors_simd_flex;
 
-use coarsetime::{Duration, Instant};
+use coarsetime::Instant;
 
-use anyhow::{anyhow, bail, Result};
-use dashmap::iter::Iter;
+use anyhow::{bail, Result};
 use grpc::sniper::FeedSampleOption;
 use grpc::sniper::GpuPsFeature64;
 use grpc::sniper::PullOption;
@@ -52,7 +44,6 @@ use grpc::sniper::PushOption;
 
 use prost::Message;
 use rand::Rng;
-use rand::RngCore;
 
 use dashmap::DashMap;
 use util::error_bail;
@@ -60,7 +51,6 @@ use util::get_target_shard_by_sign;
 use util::histogram::HistogramType;
 
 use util::simd::adagrad_update;
-use util::simd::sum_f32_vectors_simd_no_copy;
 
 use crate::arc_unsafe_vec::ArcUnsafeVec;
 
@@ -81,7 +71,7 @@ impl SparseParameter {
         let mut weight = Vec::with_capacity(total);
 
         // Inialized with random normal distribution.
-        for i in 0..total {
+        for _ in 0..total {
             weight.push(rand::thread_rng().gen::<f32>());
         }
 
@@ -384,7 +374,7 @@ impl Embedding {
                     let cnt = lru.len() - max_size;
 
                     // Delete oldest batch_id and `BatchMessage`.
-                    for i in 0..cnt {
+                    for _ in 0..cnt {
                         match lru.pop_front() {
                             Some(batch_id) => {
                                 // The batch_id maybe already deleted when pulling
@@ -453,8 +443,8 @@ impl Embedding {
     /// will be added later.
     pub fn push(
         &self,
-        batch_id: u64,
-        option: &PushOption,
+        _batch_id: u64,
+        _option: &PushOption,
         keys: &[u64],
         values: &[f32],
     ) -> Result<()> {
@@ -548,7 +538,7 @@ impl Embedding {
     /// TODO: using preallocated memory and DashMap as embedding table storage.
     pub fn pull(
         &self,
-        batch_id: u64,
+        _batch_id: u64,
         option: &PullOption,
         out_option: &mut PullOption,
         keys: &mut Vec<u64>,
@@ -599,7 +589,7 @@ impl Embedding {
         &self,
         field: i32,
         batch_id: u64,
-        batch_size: usize,
+        _batch_size: usize,
         buffer: ArcUnsafeVec<f32>,
         total_dim: usize,
         dim_acc: usize,
@@ -707,10 +697,10 @@ impl Embedding {
         batch_id: u64,
         field: i32,
         learning_rate: f32,
-        eta: f32,
+        _eta: f32,
         eps: f32,
-        decay: f32,
-        l2: f32,
+        _decay: f32,
+        _l2: f32,
     ) -> Result<()> {
         let batch_message = match self.pull_lookup_queue(field, batch_id) {
             Some(x) => x,
@@ -724,7 +714,7 @@ impl Embedding {
         };
 
         let signs = &batch_message.signs;
-        let item_indexes = &batch_message.item_indexes;
+        let _item_indexes = &batch_message.item_indexes;
 
         for sign in signs {
             match self.store.get_mut(sign) {
@@ -756,7 +746,7 @@ impl Embedding {
         weight: &mut Vec<f32>,
         grad: &[f32],
         embedding_size: usize,
-        learning_rate: f32,
+        _learning_rate: f32,
         eta: f32,
         eps: f32,
         decay: f32,

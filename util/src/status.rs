@@ -1,5 +1,3 @@
-use std::default;
-
 /// Status code.
 #[derive(Default, Clone)]
 pub enum StatusCode {

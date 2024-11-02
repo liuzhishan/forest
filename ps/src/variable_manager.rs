@@ -1,23 +1,15 @@
-use std::borrow::BorrowMut;
-use std::cell::RefCell;
-use std::default;
-use std::sync::Arc;
 use std::sync::Mutex;
 
-use anyhow::{anyhow, bail, Result};
-use dashmap::mapref::one::{Ref, RefMut};
-use log::{error, info};
+use anyhow::{bail, Result};
+use log::error;
 
 use dashmap::DashMap;
-use sync_unsafe_cell::SyncUnsafeCell;
 use util::error_bail;
-use util::histogram;
-use util::histogram::WithHistogram;
 
 use crate::arc_unsafe_vec::ArcInnerUnsafeVec;
 use crate::dense::DenseVariable;
 
-use util::histogram::Histogram;
+use util::histogram::WithHistogram;
 
 use crate::embedding::Embedding;
 

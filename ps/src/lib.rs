@@ -6,7 +6,7 @@
 //! data structure and variable_manager for them.
 
 #![feature(portable_simd)]
-use core::simd::prelude::*;
+#![allow(dead_code)]
 
 pub mod tool;
 pub use tool::get_ps_client;

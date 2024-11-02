@@ -1,23 +1,16 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use log::{error, info};
 
-use tokio::sync::{broadcast, mpsc};
-use tokio::time::{sleep, Duration};
-use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
+use tokio::sync::broadcast;
+use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle};
 
 use util::histogram::Histogram;
-use util::{
-    error_bail,
-    histogram::{HistogramDetail, HistogramType},
-    FeaturePlacement,
-};
+use util::{error_bail, FeaturePlacement};
 
 use crate::{batch_assembler::BatchAssembler, feed_sample::FeedSample, hdfs_reader::HdfsReader};
 
-use super::local_reader::LocalReader;
-
 use super::sample::SampleBatch;
-use grpc::sniper::{SimpleFeatures, StartSampleOption};
+use grpc::sniper::StartSampleOption;
 
 /// Pipeline for SingleSample input data.
 ///
@@ -95,12 +88,11 @@ impl SingleSamplePipeline {
 
     /// Split filenames between spawned tasks.
     fn get_part_filenames(&self, filenames: &Vec<String>, index: i32, total: i32) -> Vec<String> {
-        let n = filenames.len();
         filenames
             .iter()
             .enumerate()
-            .filter(|(i, x)| *i as i32 % total == index)
-            .map(|(i, x)| x.clone())
+            .filter(|(i, _x)| *i as i32 % total == index)
+            .map(|(_i, x)| x.clone())
             .collect::<Vec<String>>()
     }
 
@@ -108,7 +100,7 @@ impl SingleSamplePipeline {
     ///
     /// Create LocalReader, BatchAssembler, FeedSample task, and channel for each task,
     /// init the tasks, and then run the tasks.
-    pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
+    pub async fn run(self, subsys: SubsystemHandle) -> Result<()> {
         info!("SingleSamplePipeline start");
 
         // Run the tasks.
@@ -267,7 +259,7 @@ impl GroupSamplePipeline {
     ///
     /// Create StartSample, LocalReader, BatchAssembler, FeedSample task, and channel for each task,
     /// init the tasks, and then run the tasks.
-    pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
+    pub async fn run(self, _subsys: SubsystemHandle) -> Result<()> {
         // TODO
         Ok(())
     }

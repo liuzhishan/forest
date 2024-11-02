@@ -1,14 +1,7 @@
 use env_logger;
-use log::{error, info};
-
-use std::hash::SipHasher;
-use std::thread;
+use log::info;
 
 use rand::Rng;
-use rand::RngCore;
-
-use anyhow::anyhow;
-use anyhow::bail;
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use tokio::signal::unix::{signal, SignalKind};
@@ -76,7 +69,7 @@ macro_rules! error_bail {
 
 #[inline]
 pub fn compute_hash<T: Hash>(t: &T) -> u64 {
-    let mut s = SipHasher::new();
+    let mut s = DefaultHasher::new();
     t.hash(&mut s);
     s.finish()
 }
@@ -105,7 +98,7 @@ pub fn get_target_shard_by_sign(sign: u64, shard_num: usize) -> usize {
 pub fn gen_random_f32_list(n: usize) -> Vec<f32> {
     let mut res = Vec::with_capacity(n);
 
-    for i in 0..n {
+    for _ in 0..n {
         res.push(rand::thread_rng().gen::<f32>());
     }
 

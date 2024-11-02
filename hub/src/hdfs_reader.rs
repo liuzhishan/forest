@@ -1,19 +1,13 @@
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Error;
 use anyhow::Result;
 use log::{error, info};
-use prost::Message;
 use util::histogram::record_time;
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader};
 
-use coarsetime::{Duration, Instant, Updater};
-use hdrs::{Client, ClientBuilder};
-use tokio::sync::mpsc;
+use coarsetime::Instant;
+use hdrs::ClientBuilder;
 use tokio_graceful_shutdown::SubsystemHandle;
 
-use grpc::sniper::SimpleFeatures;
 use util::histogram::{Histogram, HistogramType};
 
 /// Read data from hdfs.
@@ -53,7 +47,7 @@ impl HdfsReader {
     }
 
     /// Read from hdfs paths, send line to channel.
-    pub async fn run(mut self, subsys: SubsystemHandle) -> Result<()> {
+    pub async fn run(mut self, _subsys: SubsystemHandle) -> Result<()> {
         let fs = ClientBuilder::new(&"default").connect()?;
 
         for filename in self.filenames.iter() {
@@ -63,8 +57,8 @@ impl HdfsReader {
                 filename.clone()
             );
 
-            let mut f = fs.open_file().read(true).open(filename)?;
-            let mut reader = BufReader::new(f);
+            let f = fs.open_file().read(true).open(filename)?;
+            let reader = BufReader::new(f);
 
             let mut last = Instant::now();
 

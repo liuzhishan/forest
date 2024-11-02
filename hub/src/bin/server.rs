@@ -1,9 +1,7 @@
-use anyhow::{anyhow, Result};
-use log::error;
+use anyhow::Result;
 use log::info;
 
 use local_ip_address::local_ip;
-use std::net::TcpListener;
 use tonic::transport::Server;
 
 use grpc::sniper::sniper_server::SniperServer;

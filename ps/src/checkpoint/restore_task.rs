@@ -1,21 +1,17 @@
-use anyhow::{anyhow, bail, Result};
-use grpc::sniper::{GpuPsDenseData, GpuPsSparseData, VariableType};
-use std::cmp::min;
-use std::{fs::File, io::Write};
+use anyhow::{bail, Result};
+use grpc::sniper::{GpuPsDenseData, GpuPsSparseData};
 use util::error_bail;
 
 use std::io::BufRead;
-use std::io::BufReader;
 
 use log::{error, info};
 use std::marker::PhantomData;
 
+use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use base64::{engine::general_purpose::STANDARD, read::DecoderReader};
 
 use crate::dense::DenseVariable;
 use crate::embedding::{Embedding, SparseParameter};
-use crate::env::Env;
 
 use super::file_handler::{FileReader, HdfsFileReader, LocalFileReader};
 use super::tool::CheckpointContext;
@@ -81,7 +77,7 @@ impl<R: FileReader> RestoreSparseTask<R> {
         embedding: &Embedding,
         is_embedding_weight: bool,
     ) -> Result<()> {
-        let mut reader = R::get_reader(filename)?;
+        let reader = R::get_reader(filename)?;
 
         let mut total_count: u64 = 0;
 
@@ -237,9 +233,9 @@ impl<R: FileReader> RestoreDenseTask<R> {
     ///
     /// Filename is stored in context.path.
     pub fn run(&self, dense_variable: &mut DenseVariable) -> Result<()> {
-        let mut reader = R::get_reader(&self.context.path)?;
+        let reader = R::get_reader(&self.context.path)?;
 
-        let mut total_count: u64 = 0;
+        let mut _total_count: u64 = 0;
 
         for x in reader.lines() {
             match x {
@@ -248,7 +244,7 @@ impl<R: FileReader> RestoreDenseTask<R> {
                     dense_variable
                         .push_from_slice(&dense_data.value, dense_data.offset_idx as usize)?;
 
-                    total_count += dense_data.value.len() as u64;
+                    _total_count += dense_data.value.len() as u64;
                 }
                 Err(err) => {
                     error_bail!(

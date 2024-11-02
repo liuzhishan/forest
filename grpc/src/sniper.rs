@@ -1,14 +1,14 @@
-use anyhow::{anyhow, Result};
-use log::{error, info};
-use prost::{Message, Name};
+use anyhow::Result;
+use log::error;
+use prost::Name;
 
-use prost_types::{field_options, Any};
-use tensorflow::{Tensor, TensorType};
+use prost_types::Any;
+use tensorflow::TensorType;
 
 tonic::include_proto!("sniper");
 
 impl StartSampleOption {
-    pub fn get_embedding_varnames(&self, sparse_feature_count: usize) -> Vec<String> {
+    pub fn get_embedding_varnames(&self, _sparse_feature_count: usize) -> Vec<String> {
         match self.feature_list.as_ref() {
             Some(x) => x.sparse_emb_table.clone(),
             None => {
@@ -40,7 +40,7 @@ impl TensorProto {
         // shape.
         let tensor_shape = Some(TensorShapeProto { dim: dim.clone() });
 
-        /// bytes.
+        // bytes.
         let (head, body, tail) = unsafe { values.align_to::<u8>() };
 
         assert!(head.is_empty());

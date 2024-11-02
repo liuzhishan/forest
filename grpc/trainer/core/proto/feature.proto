@@ -22,12 +22,12 @@ message DenseFeature {
     repeated float values = 2;
 }
 
-/// All features.
-message SimpleFeatures {
-    /// Request id.
+/// Old feature format.
+message AdFederateFeature {
+    /// llsid.
     uint64 llsid = 1;
 
-    /// item_id。
+    /// item_id.
     uint64 item_id = 2;
 
     /// Sparse feature.
@@ -36,8 +36,35 @@ message SimpleFeatures {
     /// Dense feature.
     repeated DenseFeature dense_feature = 4;
 
-    /// Label, only one int64 is supported currently.
+    /// Label.
     int64 label = 5;
+}
+
+/// Features with timestamp.
+message SimpleFeatures {
+    /// Version.
+    uint32 version = 1;
+
+    /// llsid.
+    uint64 llsid = 2;
+
+    /// user_id.
+    uint64 user_id = 3;
+
+    /// item_id.
+    uint64 item_id = 4;
+
+    /// Sparse feature.
+    repeated SparseFeature sparse_feature = 5;
+
+    /// Dense feature.
+    repeated DenseFeature dense_feature = 6;
+
+    /// Final label.
+    repeated int64 final_label = 7;
+
+    /// Timestamp.
+    uint64 timestamp = 8;
 }
 
 /// Passing sparse feature from hub to ps.

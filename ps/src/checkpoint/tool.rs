@@ -1,6 +1,4 @@
 use grpc::sniper::{CheckPointTarget, CheckPointType, VariableType};
-use tonic_types::ErrorDetail;
-use util::Status;
 
 /// Important info used for save or restore checkpoint.
 ///

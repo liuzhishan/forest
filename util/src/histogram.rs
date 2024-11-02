@@ -21,29 +21,23 @@
 //! statistics data in each thread (more precisely, the spawned task), and then send to one merge
 //! channel periodically.
 
-use std::{
-    default,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use log::{error, info};
 
-use strum::{EnumCount, EnumDiscriminants, EnumString, FromRepr, ToString};
-use tokio::time::sleep;
+use strum::{Display, EnumCount, EnumDiscriminants, EnumString, FromRepr};
 use tokio::{select, sync::mpsc};
 
-use coarsetime::{Duration, Instant, Updater};
+use coarsetime::Instant;
 
 use likely_stable::{likely, unlikely};
 
-use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
-
-use crate::error_bail;
+use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle};
 
 /// All histogram type to be recorded.
 #[derive(
-    Default, Clone, FromRepr, Debug, PartialEq, EnumCount, EnumDiscriminants, EnumString, ToString,
+    Default, Clone, FromRepr, Debug, PartialEq, EnumCount, EnumDiscriminants, EnumString, Display,
 )]
 #[repr(usize)]
 pub enum HistogramType {

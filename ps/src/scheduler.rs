@@ -5,7 +5,7 @@ use log::{error, info};
 use std::time::Duration;
 use util::error_bail;
 
-use std::{collections::VecDeque, sync::atomic::AtomicBool};
+use std::collections::VecDeque;
 use tokio_graceful_shutdown::SubsystemHandle;
 use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
 
@@ -13,7 +13,6 @@ use tokio::{select, sync::mpsc};
 
 use grpc::sniper::{
     heartbeat_option::{CkpStatus, StatusType},
-    sniper_client::SniperClient,
     CheckPointTarget, CheckPointType, HeartbeatOption, Role, TensorMessage,
 };
 use hashbrown::HashMap;
@@ -118,7 +117,7 @@ impl FinishRecord {
         } else {
             Err(anyhow!(format!(
                 "unsupported checkpoint_target: {}",
-                checkpoint_target.as_str_name().clone()
+                checkpoint_target.as_str_name()
             )))
         }
     }
@@ -218,8 +217,6 @@ impl SaveStateNotifier {
                 }
             }
         }
-
-        Ok(())
     }
 }
 
@@ -276,7 +273,7 @@ impl Scheduler {
 
         let (sender, receiver) = mpsc::channel(100);
 
-        self.save_state_sender.insert(sender);
+        let _ = self.save_state_sender.insert(sender);
 
         Self::start_save_state_receiver(scheduler_ps.clone(), receiver);
 
@@ -335,7 +332,7 @@ impl Scheduler {
         checkpoint_target: CheckPointTarget,
         path: &String,
         shard_index: i32,
-        shard_num: i32,
+        _shard_num: i32,
     ) -> Result<()> {
         let checkpoint_type = if is_increment {
             CheckPointType::CkpTypeIncr
@@ -403,7 +400,7 @@ impl Scheduler {
     pub fn check_checkpoint_status(
         &self,
         version: i64,
-        checkpoint_type: CheckPointType,
+        _checkpoint_type: CheckPointType,
         checkpoint_target: CheckPointTarget,
     ) -> Result<(bool, bool)> {
         if checkpoint_target == CheckPointTarget::CkpTargetNfs {
@@ -414,9 +411,6 @@ impl Scheduler {
 
             // Get current success count.
             for x in self.full_version_stat.iter() {
-                // version.
-                let version = x.key();
-
                 // varname records.
                 let vars = x.value();
 
@@ -469,7 +463,7 @@ impl Scheduler {
             );
 
             if is_success {
-                self.finish_records.write().add_record(
+                let _ = self.finish_records.write().add_record(
                     version,
                     true,
                     CheckPointTarget::CkpTargetNfs,
@@ -484,7 +478,7 @@ impl Scheduler {
         } else {
             Err(anyhow!(format!(
                 "not supported yet! checkpoint_target: {}",
-                checkpoint_target.as_str_name().clone()
+                checkpoint_target.as_str_name()
             )))
         }
     }

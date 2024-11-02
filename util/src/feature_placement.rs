@@ -8,8 +8,6 @@ use grpc::sniper::EmbeddingTable;
 
 use crate::{error_bail, simple_string_to_int_hash};
 
-use super::compute_hash;
-
 /// Strategy to place var to different ps.
 ///
 /// The goal is to minimize the total load of all ps.

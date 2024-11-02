@@ -3,10 +3,7 @@ use local_ip_address::local_ip;
 use log::info;
 use util::wait_for_signal;
 
-use std::net::SocketAddr;
-use tokio::net::TcpListener;
-
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::transport::Server;
 
 use grpc::sniper::sniper_server::SniperServer;
 use ps::request_handler::Ps;
@@ -47,9 +44,10 @@ async fn serve() {
 ///     to `ps` to get `Embedding` parameters. But the request from `hub` and `trainer` may
 ///     not be processed by the same thread, so the `batch_id` would be not found in `Embedding`
 ///     variables.
+#[allow(dead_code)]
 fn multi_thread_serve() {
     let mut handlers = Vec::new();
-    for i in 0..num_cpus::get() {
+    for _i in 0..num_cpus::get() {
         let h = std::thread::spawn(move || {
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()

@@ -1,16 +1,12 @@
 //! Functions using simd.
-
-#![feature(portable_simd)]
-use core::simd::prelude::*;
-
-use std::mem::size_of;
-
+use std::simd::prelude::SimdFloat;
+use std::simd::Simd;
 use std::simd::StdFloat;
 
 use anyhow::{bail, Result};
-use log::{error, info};
+use log::error;
 
-use likely_stable::{likely, unlikely};
+use likely_stable::unlikely;
 
 use crate::error_bail;
 

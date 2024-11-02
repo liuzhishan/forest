@@ -1,11 +1,4 @@
-use std::borrow::BorrowMut;
-use std::cell::RefCell;
 use std::sync::Arc;
-use std::sync::Mutex;
-
-use anyhow::{anyhow, bail, Result};
-use log::{error, info};
-use std::ops::Range;
 
 use sync_unsafe_cell::SyncUnsafeCell;
 
@@ -72,7 +65,7 @@ impl<T: Sized> ArcUnsafeVec<T> {
         let vec = self.as_vec();
 
         if index < vec.len() {
-            unsafe { Some(&self.as_vec()[index]) }
+            Some(&self.as_vec()[index])
         } else {
             None
         }
@@ -86,7 +79,7 @@ impl<T: Sized> ArcUnsafeVec<T> {
         let vec = self.as_vec();
 
         if index < vec.len() {
-            unsafe { Some(&mut self.as_vec_mut()[index]) }
+            Some(&mut self.as_vec_mut()[index])
         } else {
             None
         }
@@ -97,7 +90,7 @@ impl<T: Sized> ArcUnsafeVec<T> {
     /// Uncheck index.
     #[inline]
     pub fn get_element_unchecked(&self, index: usize) -> &T {
-        unsafe { &self.as_vec()[index] }
+        &self.as_vec()[index]
     }
 
     /// Get mutable reference of inner element of `Vec` at index.
@@ -105,7 +98,7 @@ impl<T: Sized> ArcUnsafeVec<T> {
     /// Uncheck index.
     #[inline]
     pub fn get_element_mut_unchecked(&self, index: usize) -> &mut T {
-        unsafe { &mut self.as_vec_mut()[index] }
+        &mut self.as_vec_mut()[index]
     }
 
     /// Get len of inner `Vec`.

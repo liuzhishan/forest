@@ -3,7 +3,6 @@ use anyhow::Result;
 use local_ip_address::local_ip;
 
 use grpc::sniper::sniper_client::SniperClient;
-use log::info;
 use util::MESSAGE_LIMIT;
 
 pub const HUB_SERVER_PORT: i32 = 35000;

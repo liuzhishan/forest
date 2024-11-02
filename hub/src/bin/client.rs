@@ -7,7 +7,6 @@ use grpc::sniper::SparseFieldInfo;
 use grpc::sniper::StartSampleOption;
 use grpc::sniper::TensorProto;
 use hub::tool::get_hub_default_client;
-use hub::tool::HUB_SERVER_PORT;
 use log::info;
 
 use clap::Parser;
@@ -22,6 +21,7 @@ use ps::tool::PS_SERVER_PORT;
 use util::Flags;
 
 /// Test say_hello.
+#[allow(dead_code)]
 async fn test_hello(client: &mut SniperClient<tonic::transport::Channel>) -> Result<()> {
     let request = tonic::Request::new(HelloRequest {
         name: "Tonic".into(),
@@ -131,7 +131,7 @@ async fn test_start_sample(
 
     info!("client.start_sample before!");
 
-    let response = client.start_sample(request).await?;
+    let _response = client.start_sample(request).await?;
 
     info!("client.start_sample done!");
 

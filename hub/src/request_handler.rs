@@ -1,30 +1,24 @@
-use std::borrow::BorrowMut;
 use std::time::Duration;
 
-use anyhow::bail;
 use log::{error, info};
-use std::cell::RefCell;
 use sync_unsafe_cell::SyncUnsafeCell;
-use tracing::instrument::WithSubscriber;
 use util::histogram::{Histogram, HistogramAggregator, HistogramDetail, HistogramType};
 
-use std::collections::HashMap as StdHashMap;
 use std::sync::Arc;
 
 use tokio::sync::{broadcast, mpsc};
 
 use prost_types::Any;
 use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
-use tonic::{transport::Server, Code, Request, Response, Status};
-use tonic_types::{ErrorDetails, StatusExt};
+use tonic::{Request, Response, Status};
 
-use grpc::sniper::sniper_server::{Sniper, SniperServer};
+use grpc::sniper::sniper_server::Sniper;
 use grpc::sniper::{
-    start_sample_option, DataType, HelloRequest, HelloResponse, PsShard, ReadSampleOption, Role,
-    StartSampleOption, TensorMessage, UpdateShardOption, VoidMessage,
+    DataType, HelloRequest, HelloResponse, ReadSampleOption, Role, StartSampleOption,
+    TensorMessage, UpdateShardOption, VoidMessage,
 };
 
-use grpc::sniper::{TensorProto, TensorShapeProto};
+use grpc::sniper::TensorProto;
 use grpc::tool::{get_request_inner_options, send_bad_request_error, send_error_message};
 
 use super::pipeline::GroupSamplePipeline;
@@ -113,7 +107,7 @@ impl Sniper for Hub {
         &self,
         request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
-        let mut response = VoidMessage::default();
+        let response = VoidMessage::default();
 
         let request_inner = request.into_inner();
         let mut start_sample_option =
@@ -131,7 +125,7 @@ impl Sniper for Hub {
         let (batch_sender, batch_receiver) = async_channel::bounded::<SampleBatch>(100);
 
         unsafe {
-            (*self.sample_batch_receiver.get()).insert(batch_receiver);
+            let _ = (*self.sample_batch_receiver.get()).insert(batch_receiver);
         }
 
         let (histogram_sender, histogram_receiver) = mpsc::channel::<HistogramDetail>(100);
@@ -154,7 +148,7 @@ impl Sniper for Hub {
             }
 
             tokio::spawn(async move {
-                Toplevel::new(|s| async move {
+                let _ = Toplevel::new(|s| async move {
                     s.start(SubsystemBuilder::new("single_sample_pipeline", |a| {
                         single_sample_pipeline.run(a)
                     }));
@@ -200,11 +194,8 @@ impl Sniper for Hub {
     /// Read one batch from sample_batch_receiver channel.
     async fn read_sample(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<TensorMessage>, Status> {
-        let mut response = TensorMessage::default();
-        let mut err_details = ErrorDetails::new();
-
         let mut response = TensorMessage::default();
 
         let mut read_sample_option = ReadSampleOption::default();
@@ -246,13 +237,11 @@ impl Sniper for Hub {
             return Ok(Response::new(response));
         }
 
-        let mut receiver_mut = unsafe { &mut *self.sample_batch_receiver.get() };
+        let receiver_mut = unsafe { &mut *self.sample_batch_receiver.get() };
 
         match receiver_mut.as_mut() {
             Some(receiver) => match receiver.recv().await {
                 Ok(sample_batch) => {
-                    let batch_id = sample_batch.batch_id;
-
                     read_sample_option.batch_id = sample_batch.batch_id;
 
                     // Save labels to tensor1 of TensorMessage.
@@ -292,7 +281,7 @@ impl Sniper for Hub {
                 }
                 Err(err) => send_bad_request_error::<TensorMessage>(
                     "options",
-                    "from read_sample_option to options failed!",
+                    format!("from read_sample_option to options failed!, err: {}", err),
                 ),
             },
             None => {
@@ -335,14 +324,17 @@ impl Sniper for Hub {
         match self.ps_shard_sender.send(new_shard) {
             Ok(_) => Ok(Response::new(VoidMessage::default())),
             Err(err) => {
-                return send_error_message::<VoidMessage>("send ps shard to all threads failed!");
+                return send_error_message::<VoidMessage>(format!(
+                    "send ps shard to all threads failed!, err: {}",
+                    err
+                ));
             }
         }
     }
 
     async fn heartbeat(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<TensorMessage>, Status> {
         Ok(Response::new(TensorMessage::default()))
     }
@@ -350,71 +342,77 @@ impl Sniper for Hub {
     // Below are services for ps, no need for implementation for hub.
     async fn create(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         Ok(Response::new(VoidMessage::default()))
     }
 
     async fn freeze(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         Ok(Response::new(VoidMessage::default()))
     }
 
     async fn feed_sample(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         Ok(Response::new(VoidMessage::default()))
     }
 
-    async fn push(&self, request: Request<TensorMessage>) -> Result<Response<VoidMessage>, Status> {
+    async fn push(
+        &self,
+        _request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
         Ok(Response::new(VoidMessage::default()))
     }
 
     async fn pull(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<TensorMessage>, Status> {
         Ok(Response::new(TensorMessage::default()))
     }
 
     async fn embedding_lookup(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<TensorMessage>, Status> {
         Ok(Response::new(TensorMessage::default()))
     }
 
     async fn push_grad(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         Ok(Response::new(VoidMessage::default()))
     }
 
-    async fn save(&self, request: Request<TensorMessage>) -> Result<Response<VoidMessage>, Status> {
+    async fn save(
+        &self,
+        _request: Request<TensorMessage>,
+    ) -> Result<Response<VoidMessage>, Status> {
         Ok(Response::new(VoidMessage::default()))
     }
 
     async fn restore(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<TensorMessage>, Status> {
         Ok(Response::new(TensorMessage::default()))
     }
 
     async fn complete(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         Ok(Response::new(VoidMessage::default()))
     }
 
     async fn update_ps_shard(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         Ok(Response::new(VoidMessage::default()))
     }

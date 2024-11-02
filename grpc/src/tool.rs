@@ -1,11 +1,8 @@
 use prost::{Message, Name};
-use tonic::{transport::Server, Code, Request, Response, Status};
+use tonic::{Code, Response, Status};
 use tonic_types::{ErrorDetails, StatusExt};
 
-use crate::sniper::{
-    CreateOption, EmbeddingLookupOption, FeedSampleOption, PullOption, PushGradOption, PushOption,
-    ReadSampleOption, TensorMessage,
-};
+use crate::sniper::TensorMessage;
 
 /// Send error message of bad request for grpc request.
 pub fn send_bad_request_error<T>(
@@ -44,7 +41,7 @@ pub fn get_request_inner_options<T: Message + Name + Default>(
     match request.options.as_ref() {
         Some(x) => match x.clone().to_msg::<T>() {
             Ok(option) => Some(option),
-            Err(err) => None,
+            Err(_) => None,
         },
         None => None,
     }

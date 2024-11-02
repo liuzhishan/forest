@@ -1,17 +1,16 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use log::{error, info};
 
-use tokio::sync::mpsc;
 use tokio::time::sleep;
 
-use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
+use tokio_graceful_shutdown::SubsystemHandle;
 
 use prost::Message;
 
+use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use base64::{engine::general_purpose::STANDARD, read::DecoderReader};
 
-use coarsetime::{Duration, Instant, Updater};
+use coarsetime::Instant;
 
 use grpc::sniper::SimpleFeatures;
 use util::error_bail;
@@ -110,7 +109,7 @@ impl BatchAssembler {
 
         // add labels.
         self.sample_batch
-            .add_label(self.batch_index, features.label as i32)?;
+            .add_label(self.batch_index, features.final_label[0] as i32)?;
 
         self.batch_index += 1;
 

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use tokio::{select, sync::broadcast};
 use util::FeaturePlacement;
 
-use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
+use tokio_graceful_shutdown::SubsystemHandle;
 
 use log::{error, info};
 

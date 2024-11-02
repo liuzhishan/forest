@@ -1,12 +1,9 @@
 //! Dense parameter of network.
 
 use anyhow::{anyhow, bail, Result};
-use dashmap::DashMap;
-use grpc::sniper::PullOption;
-use log::{error, info};
+use log::error;
 use std::sync::Arc;
 use std::sync::Mutex;
-use util::histogram;
 use util::histogram::WithHistogram;
 use util::{error_bail, histogram::Histogram};
 

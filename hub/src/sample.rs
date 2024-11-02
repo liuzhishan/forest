@@ -1,8 +1,7 @@
 //! Sample for input data in different format.
 
 use anyhow::{bail, Result};
-use base64::encode_engine_slice;
-use log::{error, info};
+use log::error;
 
 use rand::RngCore;
 use util::error_bail;

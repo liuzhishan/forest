@@ -1,18 +1,17 @@
-use anyhow::{anyhow, bail, Result};
-use grpc::sniper::{GpuPsDenseData, GpuPsSparseData, VariableType};
+use anyhow::{bail, Result};
+use grpc::sniper::{GpuPsDenseData, GpuPsSparseData};
 use std::cmp::min;
-use std::{fs::File, io::Write};
+use std::io::Write;
 use util::error_bail;
 
 use log::{error, info};
 use std::marker::PhantomData;
 
+use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use base64::{engine::general_purpose::STANDARD, read::DecoderReader};
 
 use crate::dense::DenseVariable;
 use crate::embedding::Embedding;
-use crate::env::Env;
 
 use super::file_handler::{FileWriter, HdfsFileWriter, LocalFileWriter};
 use super::tool::CheckpointContext;
@@ -102,9 +101,6 @@ impl<W: FileWriter> SaveSparseTask<W> {
 
         let mut adagrad_writer = W::get_writer(&adagrad_filename)?;
 
-        /// Count total signs get.
-        let mut total_count: i64 = 0;
-
         let variable_dim = self.context.variable_dim;
         let optimizer_dim = self.context.optimizer_dim;
 
@@ -144,8 +140,6 @@ impl<W: FileWriter> SaveSparseTask<W> {
                     );
                 }
 
-                total_count += 1;
-
                 weight_sparse.id.push(x.key().clone());
                 weight_sparse
                     .val
@@ -158,8 +152,6 @@ impl<W: FileWriter> SaveSparseTask<W> {
 
                 if weight_sparse.id.len() >= self.context.max_record_iterate_count as usize {
                     // When reach max_record_iterate_count, save one line to file, then clear.
-                    let buf: Vec<u8> = Vec::new();
-
                     // Save to file.
                     append_proto_base64_to_file(&weight_sparse, &mut weight_writer)?;
                     append_proto_base64_to_file(&adagrad_sparse, &mut adagrad_writer)?;

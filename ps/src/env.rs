@@ -1,22 +1,3 @@
-use grpc::sniper::Role;
-use hashbrown::HashMap;
-
-use std::{
-    borrow::Borrow,
-    sync::{Mutex, OnceLock},
-};
-
-use crossbeam_utils::CachePadded;
-
-use crate::{
-    checkpoint::checkpoint_manager::CheckpointManager,
-    embedding::Embedding,
-    scheduler::Scheduler,
-    variable_manager::{DenseManager, EmbeddingManager},
-};
-
-use dashmap::{mapref::one::Ref, RawRwLock};
-
 /// Global env for all ps workers.
 ///
 /// Embedding_manager, dense_manager, scheduler and other important state are all managed by EnvImpl.

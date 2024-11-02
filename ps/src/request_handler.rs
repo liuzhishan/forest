@@ -1,5 +1,3 @@
-use std::borrow::Borrow;
-use std::cmp::min;
 use std::iter::zip;
 use std::sync::{Arc, Mutex};
 
@@ -9,43 +7,32 @@ use hashbrown::HashMap;
 use likely_stable::unlikely;
 use log::{error, info};
 
-use sync_unsafe_cell::SyncUnsafeCell;
-use tracing::instrument::WithSubscriber;
 use util::histogram::{
-    self, record_time, Histogram, HistogramAggregator, HistogramDetail, HistogramType,
+    record_time, Histogram, HistogramAggregator, HistogramDetail, HistogramType,
 };
 
-use prost_types::{field_options, Any};
+use prost_types::Any;
 use tokio::sync::mpsc;
 use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
-use tonic::{transport::Server, Code, Request, Response, Status};
-use tonic_types::{ErrorDetails, StatusExt};
+use tonic::{Request, Response, Status};
 
-use coarsetime::{Duration, Instant, Updater};
+use coarsetime::Instant;
 
-use grpc::sniper::sniper_server::{Sniper, SniperServer};
+use grpc::sniper::sniper_server::Sniper;
 use grpc::sniper::{
-    start_sample_option, CheckPointTarget, CheckPointType, CreateOption, DataType,
-    EmbeddingLookupOption, FeedSampleOption, FreezeOption, GpuPsDenseData, HeartbeatOption,
-    HelloRequest, HelloResponse, PullOption, PushGradOption, PushOption, RestoreOption, Role,
-    SaveOption, StartSampleOption, TensorMessage, VoidMessage,
+    CheckPointTarget, CheckPointType, CreateOption, DataType, EmbeddingLookupOption,
+    FeedSampleOption, FreezeOption, HeartbeatOption, HelloRequest, HelloResponse, PullOption,
+    PushGradOption, PushOption, RestoreOption, Role, SaveOption, TensorMessage, VoidMessage,
 };
 
-use grpc::sniper::{TensorProto, TensorShapeProto, UpdateShardOption, VariableType};
+use grpc::sniper::{TensorProto, UpdateShardOption, VariableType};
 use grpc::tool::{get_request_inner_options, send_bad_request_error, send_error_message};
 use util::error_bail;
 
 use crate::arc_unsafe_slice::ArcUnsafeSlice;
-use crate::arc_unsafe_vec::ArcUnsafeVec;
-use crate::checkpoint::checkpoint_manager::{self, CheckpointManager};
-use crate::checkpoint::restore_task::{
-    self, RestoreDenseFromHdfsTask, RestoreDenseFromLocalTask, RestoreSparseFromHdfsTask,
-    RestoreSparseFromLocalTask, RestoreSparseTask,
-};
-use crate::checkpoint::save_task::{
-    SaveDenseToHdfsTask, SaveDenseToLocalTask, SaveSparseTask, SaveSparseToHdfsTask,
-    SaveSparseToLocalTask,
-};
+use crate::checkpoint::checkpoint_manager::CheckpointManager;
+use crate::checkpoint::restore_task::{RestoreDenseFromHdfsTask, RestoreSparseFromHdfsTask};
+use crate::checkpoint::save_task::{SaveDenseToHdfsTask, SaveSparseToHdfsTask};
 use crate::checkpoint::tool::CheckpointContext;
 use crate::dense::DenseVariable;
 use crate::embedding::{Embedding, EmbeddingLookupResult};
@@ -53,11 +40,7 @@ use crate::env::Env;
 use crate::scheduler::Scheduler;
 use crate::variable_manager::{DenseManager, EmbeddingManager};
 
-use dashmap::DashMap;
-use dashmap::Map;
-use dashmap::SharedValue;
-use dashmap::{mapref::one::Ref, RawRwLock};
-use std::hash::{BuildHasher, Hash, Hasher};
+use dashmap::RawRwLock;
 
 pub type RwLock<T> = lock_api::RwLock<RawRwLock, T>;
 
@@ -278,7 +261,7 @@ impl Ps {
         &self,
         varname: &String,
         batch_id: u64,
-        pull_option: &PullOption,
+        _pull_option: &PullOption,
     ) -> Result<TensorMessage> {
         let out_option = PullOption::default();
         let mut values: Vec<f32> = Vec::new();
@@ -373,13 +356,12 @@ impl Ps {
                 );
             }
 
-            let new_batch_id = batch_id;
-            let new_varname = varnames[i].clone();
-            let new_lookup_option = lookup_option.clone();
+            let _new_batch_id = batch_id;
+            let _new_varname = varnames[i].clone();
+            let _new_lookup_option = lookup_option.clone();
 
             let field = lookup_option.field_idx[i];
 
-            let vars = self.embedding_manager.vars_arc();
             let buffer_clone = result.values.clone();
 
             let (vars_arc, index) = match self.embedding_manager.get_var(&varnames[i]) {
@@ -419,7 +401,6 @@ impl Ps {
 
         let mut last_waiting = Instant::now();
 
-        let mut lookup_res: Vec<()> = Vec::with_capacity(varnames.len());
         let mut error_messages: Vec<String> = Vec::new();
 
         for (i, task) in tasks.into_iter().enumerate() {
@@ -531,10 +512,10 @@ impl Ps {
     fn push_dense(
         &self,
         varname: &String,
-        batch_id: u64,
-        push_option: &PushOption,
+        _batch_id: u64,
+        _push_option: &PushOption,
         tensor1: Option<&TensorProto>,
-        tensor2: Option<&TensorProto>,
+        _tensor2: Option<&TensorProto>,
     ) -> Result<()> {
         let (vars, index) = match self.dense_manager.get_var(&varname) {
             Some(x) => x,
@@ -546,7 +527,7 @@ impl Ps {
             }
         };
 
-        let mut var = vars.get_element_mut_unchecked(index);
+        let var = vars.get_element_mut_unchecked(index);
 
         let values: &[f32] = match tensor1 {
             Some(x) => x.as_slice::<f32>(),
@@ -583,7 +564,7 @@ impl Ps {
         &self,
         varnames: &Vec<String>,
         batch_id: u64,
-        batch_size: usize,
+        _batch_size: usize,
         values: &[f32],
         option: &PushGradOption,
     ) -> Result<()> {
@@ -631,8 +612,8 @@ impl Ps {
             let field = option.field_idx[i].clone();
 
             let new_batch_id = batch_id;
-            let new_option = option.clone();
-            let batch_size = option.batch_size as usize;
+            let _new_option = option.clone();
+            let _batch_size = option.batch_size as usize;
 
             let learning_rate = option.learning_rate;
             let eps = option.eps;
@@ -958,7 +939,7 @@ impl Ps {
 
                         Ok(())
                     }
-                    Err(err) => {
+                    Err(_err) => {
                         let mut checkpoint_manager_write = checkpoint_manager_clone.write();
 
                         checkpoint_manager_write.insert_restore_state(
@@ -1212,7 +1193,7 @@ impl Sniper for Ps {
             }
         };
 
-        let batch_size = feed_sample_option.batch_size;
+        let _batch_size = feed_sample_option.batch_size;
         let field_infos = &feed_sample_option.field_info;
 
         let var = vars.get_element_unchecked(index);
@@ -1492,9 +1473,10 @@ impl Sniper for Ps {
             Ok(_) => Ok(Response::new(VoidMessage::default())),
             Err(err) => {
                 return send_error_message::<VoidMessage>(format!(
-                    "push grad failed! varnames: {}, batch_id: {}",
+                    "push grad failed! varnames: {}, batch_id: {}, error: {}",
                     request_inner.varname.clone(),
                     batch_id,
+                    err,
                 ));
             }
         }
@@ -1584,8 +1566,9 @@ impl Sniper for Ps {
                         }
                         Err(err) => {
                             return send_error_message::<TensorMessage>(format!(
-                                "encode out option failed! varname: {}",
-                                varname.clone()
+                                "encode out option failed! varname: {}, error: {}",
+                                varname.clone(),
+                                err
                             ));
                         }
                     }
@@ -1630,7 +1613,7 @@ impl Sniper for Ps {
     /// Complete.
     async fn complete(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         // Nothing to do.
         Ok(Response::new(VoidMessage::default()))
@@ -1701,7 +1684,7 @@ impl Sniper for Ps {
                 }
             };
 
-            let mut scheduler = self.scheduler.write();
+            let scheduler = self.scheduler.write();
 
             match scheduler.check_checkpoint_status(
                 check_st.version,
@@ -1759,7 +1742,7 @@ impl Sniper for Ps {
 
     async fn start_sample(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         let response = VoidMessage::default();
         Ok(Response::new(response))
@@ -1767,7 +1750,7 @@ impl Sniper for Ps {
 
     async fn read_sample(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<TensorMessage>, Status> {
         let response = TensorMessage::default();
         Ok(Response::new(response))
@@ -1775,7 +1758,7 @@ impl Sniper for Ps {
 
     async fn update_hub_shard(
         &self,
-        request: Request<TensorMessage>,
+        _request: Request<TensorMessage>,
     ) -> Result<Response<VoidMessage>, Status> {
         let response = VoidMessage::default();
         Ok(Response::new(response))

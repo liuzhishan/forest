@@ -1,19 +1,19 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use grpc::sniper::{FeedFieldInfo, GpuPsFeature64, Role, StartSampleOption, TensorMessage};
 use log::{error, info};
 
 use hashbrown::HashMap;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
 
 use prost::Message;
 use prost_types::Any;
 use ps::get_ps_client;
-use tokio_graceful_shutdown::{IntoSubsystem, SubsystemBuilder, SubsystemHandle, Toplevel};
+use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle, Toplevel};
 use util::{error_bail, get_target_shard_by_sign, FeaturePlacement};
 
-use coarsetime::{Duration, Instant, Updater};
+use coarsetime::Instant;
 use util::histogram::{record_time, Histogram, HistogramType};
 
 use crate::auto_shard_updater::AutoShardUpdater;
@@ -123,7 +123,7 @@ impl FeedSample {
 
     /// Send batch_id and sparse features to ps.
     pub async fn send_to_ps(&mut self, sample_batch: &SampleBatch) -> Result<()> {
-        let sparse_feature_count = sample_batch.sparse_signs.len();
+        let _sparse_feature_count = sample_batch.sparse_signs.len();
 
         // For extensability, the value of sparse_features is a HashMap of String
         // and FeedSampleOption. Each key of the inner map is ps_endpoint. Right now
@@ -356,7 +356,7 @@ impl FeedSample {
                     match sample_batch_res {
                         Ok(sample_batch) => {
                             self.total_batch += 1;
-                            let batch_id = sample_batch.batch_id;
+                            let _batch_id = sample_batch.batch_id;
 
                             match self.send_to_ps(&sample_batch).await {
                                 Ok(_) => {},
