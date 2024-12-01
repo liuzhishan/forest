@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Author: dongxing@kuaishou.com
+
 import os
 import sys
 import sh
