@@ -1,0 +1,44 @@
+[package]
+name = "trainer_ops"
+authors = ["liuzhishan <liuzhishan01@gmail.com>"]
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+description = "trainer ops for super fast disttributed training framework base on tensorflow."
+keywords = ["deep learning", "rust", "distributed training"]
+
+[dependencies]
+log = "0.4"
+tonic = "0.12"
+tonic-types = "0.12"
+prost = "0.13.1"
+prost-types = "0.13.1"
+tokio = { version = "1.39", features = ["full"] }
+env_logger = "0.7"
+anyhow = "1.0"
+grpc = { path = "../grpc" }
+util = { path = "../util" }
+tokio-graceful-shutdown = "0.15.1"
+async-channel = "2.3.1"
+base64 = "0.22.1"
+clap = "4.5.13"
+rand = "0.8.5"
+num_cpus = "1.16"
+tracing = "0.1.37"
+hashbrown = "0.11.2"
+dashmap = { version = "6.0.0-rc.1", features = ["inline", "raw-api"] }
+lock_api = "0.4.10"
+parking_lot_core = "0.9.8"
+crossbeam-utils = "0.8"
+local-ip-address = "0.6.2"
+coarsetime = "0.1"
+chrono = "0.4"
+likely_stable = "0.1"
+socket2 = { version="0.4", features = ["all"]}
+tokio-stream = { version = "0.1", features = ["net"] }
+nix = "*"
+sync-unsafe-cell = "0.1.1"
+
+[lib]
+crate-type = ["cdylib"]

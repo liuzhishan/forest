@@ -2085,6 +2085,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "trainer_ops"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "base64",
+ "chrono",
+ "clap",
+ "coarsetime",
+ "crossbeam-utils",
+ "dashmap",
+ "env_logger",
+ "grpc",
+ "hashbrown 0.11.2",
+ "likely_stable",
+ "local-ip-address",
+ "lock_api",
+ "log",
+ "nix",
+ "num_cpus",
+ "parking_lot_core",
+ "prost",
+ "prost-types",
+ "rand",
+ "socket2 0.4.10",
+ "sync-unsafe-cell",
+ "tokio",
+ "tokio-graceful-shutdown",
+ "tokio-stream",
+ "tonic",
+ "tonic-types",
+ "tracing",
+ "util",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
