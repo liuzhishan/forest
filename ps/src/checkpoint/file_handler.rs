@@ -6,6 +6,7 @@ use std::{fs::File, io::Write};
 
 use std::io::BufReader;
 
+#[cfg(feature = "hdfs")]
 use hdrs::ClientBuilder;
 
 /// Trait for read file.
@@ -31,8 +32,10 @@ impl FileReader for LocalFileReader {
 }
 
 /// Hdfs file reader.
+#[cfg(feature = "hdfs")]
 pub struct HdfsFileReader {}
 
+#[cfg(feature = "hdfs")]
 impl FileReader for HdfsFileReader {
     type Reader = BufReader<hdrs::File>;
 
@@ -69,8 +72,10 @@ impl FileWriter for LocalFileWriter {
 }
 
 /// Write to hdfs file.
+#[cfg(feature = "hdfs")]
 pub struct HdfsFileWriter {}
 
+#[cfg(feature = "hdfs")]
 impl FileWriter for HdfsFileWriter {
     type File = hdrs::File;
 

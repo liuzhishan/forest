@@ -7,7 +7,13 @@ use tokio_graceful_shutdown::{SubsystemBuilder, SubsystemHandle};
 use util::histogram::Histogram;
 use util::{error_bail, FeaturePlacement};
 
-use crate::{batch_assembler::BatchAssembler, feed_sample::FeedSample, hdfs_reader::HdfsReader};
+#[cfg(feature = "hdfs")]
+use crate::hdfs_reader::HdfsReader;
+
+use crate::local_reader::LocalReader;
+
+use crate::batch_assembler::BatchAssembler;
+use crate::feed_sample::FeedSample;
 
 use super::sample::SampleBatch;
 use grpc::sniper::StartSampleOption;
@@ -123,12 +129,25 @@ impl SingleSamplePipeline {
         for i in 0..n {
             let part_filenames = self.get_part_filenames(&filenames, i, n);
 
-            let mut hdfs_reader = HdfsReader::new(
-                &part_filenames,
-                line_sender.clone(),
-                self.histogram.clone(),
-                i,
-            );
+            let mut hdfs_reader = {
+                #[cfg(feature = "hdfs")]
+                {
+                    HdfsReader::new(
+                        &part_filenames,
+                        line_sender.clone(),
+                        self.histogram.clone(),
+                        i,
+                    )
+                }
+                #[cfg(feature = "local")]
+                {
+                    LocalReader::new(
+                        &part_filenames,
+                        line_sender.clone(),
+                        self.histogram.clone(),
+                    )
+                }
+            };
 
             if !hdfs_reader.init().await {
                 error_bail!(
@@ -139,7 +158,14 @@ impl SingleSamplePipeline {
 
             let hdfs_reader_name = format!("hdfs_reader_{}", i);
             subsys.start(SubsystemBuilder::new(hdfs_reader_name, |a| {
-                hdfs_reader.run(a)
+                #[cfg(feature = "hdfs")]
+                {
+                    hdfs_reader.run(a)
+                }
+                #[cfg(feature = "local")]
+                {
+                    hdfs_reader.run(a)
+                }
             }));
         }
 

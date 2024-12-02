@@ -40,8 +40,8 @@ rand = "0.8.5"
 num_cpus = "1.16"
 tracing = "0.1.37"
 hashbrown = "0.11.2"
-hdrs = "0.3.2"
-hdfs-sys = "0.3.0"
+hdrs = { version = "0.3.2", optional = true }
+hdfs-sys = { version = "0.3.0", optional = true }
 local-ip-address = "0.6.2"
 sync-unsafe-cell = "0.1.1"
 coarsetime = "0.1"
@@ -49,3 +49,7 @@ likely_stable = "0.1"
 socket2 = { version="0.4", features = ["all"]}
 tokio-stream = { version = "0.1", features = ["net"] }
 nix = "*"
+
+[features]
+hdfs = ["dep:hdrs", "dep:hdfs-sys"]
+local = []

@@ -13,7 +13,10 @@ use base64::Engine;
 use crate::dense::DenseVariable;
 use crate::embedding::{Embedding, SparseParameter};
 
-use super::file_handler::{FileReader, HdfsFileReader, LocalFileReader};
+#[cfg(feature = "hdfs")]
+use super::file_handler::HdfsFileReader;
+
+use super::file_handler::{FileReader, LocalFileReader};
 use super::tool::CheckpointContext;
 
 /// Parse proto from base64 string.
@@ -264,5 +267,7 @@ impl<R: FileReader> RestoreDenseTask<R> {
 pub type RestoreSparseFromLocalTask = RestoreSparseTask<LocalFileReader>;
 pub type RestoreDenseFromLocalTask = RestoreDenseTask<LocalFileReader>;
 
+#[cfg(feature = "hdfs")]
 pub type RestoreSparseFromHdfsTask = RestoreSparseTask<HdfsFileReader>;
+#[cfg(feature = "hdfs")]
 pub type RestoreDenseFromHdfsTask = RestoreDenseTask<HdfsFileReader>;

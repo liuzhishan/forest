@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tonic_build::configure()
         .build_client(true)
-        .compile(iface_files, dirs)
+        .compile_protos(iface_files, dirs)
         .unwrap_or_else(|e| panic!("protobuf compilation failed: {}", e));
 
     for file in iface_files {

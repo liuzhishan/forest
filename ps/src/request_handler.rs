@@ -31,8 +31,18 @@ use util::error_bail;
 
 use crate::arc_unsafe_slice::ArcUnsafeSlice;
 use crate::checkpoint::checkpoint_manager::CheckpointManager;
+
+#[cfg(feature = "hdfs")]
 use crate::checkpoint::restore_task::{RestoreDenseFromHdfsTask, RestoreSparseFromHdfsTask};
+#[cfg(feature = "hdfs")]
 use crate::checkpoint::save_task::{SaveDenseToHdfsTask, SaveSparseToHdfsTask};
+
+use crate::checkpoint::save_task::SaveDenseToLocalTask;
+use crate::checkpoint::restore_task::RestoreDenseFromLocalTask;
+
+use crate::checkpoint::save_task::SaveSparseToLocalTask;
+use crate::checkpoint::restore_task::RestoreSparseFromLocalTask;
+
 use crate::checkpoint::tool::CheckpointContext;
 use crate::dense::DenseVariable;
 use crate::embedding::{Embedding, EmbeddingLookupResult};
@@ -764,7 +774,16 @@ impl Ps {
 
             // Dispatch the save task.
             tokio::spawn(async move {
-                let save_task = SaveSparseToHdfsTask::new(&new_context);
+                let save_task = {
+                    #[cfg(feature = "hdfs")]
+                    {
+                        SaveSparseToHdfsTask::new(&new_context)
+                    }
+                    #[cfg(feature = "local")]
+                    {
+                        SaveSparseToLocalTask::new(&new_context)
+                    }
+                };
 
                 let var = vars_clone.get_element_unchecked(index);
 
@@ -834,7 +853,16 @@ impl Ps {
         let save_state_sender = self.get_save_state_sender()?;
 
         tokio::spawn(async move {
-            let save_task = SaveDenseToHdfsTask::new(&context);
+            let save_task = {
+                #[cfg(feature = "hdfs")]
+                {
+                    SaveDenseToHdfsTask::new(&context)
+                }
+                #[cfg(feature = "local")]
+                {
+                    SaveDenseToLocalTask::new(&context)
+                }
+            };
 
             let var = vars.get_element_unchecked(index);
 
@@ -917,7 +945,16 @@ impl Ps {
             tokio::spawn(async move {
                 let var = vars_clone.get_element_unchecked(index);
 
-                let restore_task = RestoreSparseFromHdfsTask::new(&context);
+                let restore_task = {
+                    #[cfg(feature = "hdfs")]
+                    {
+                        RestoreSparseFromHdfsTask::new(&context)
+                    }
+                    #[cfg(feature = "local")]
+                    {
+                        RestoreSparseFromLocalTask::new(&context)
+                    }
+                };
 
                 match restore_task.run(&var) {
                     Ok(_) => {
@@ -1005,7 +1042,16 @@ impl Ps {
         let checkpoint_manager_clone = self.checkpoint_manager.clone();
 
         tokio::spawn(async move {
-            let restore_task = RestoreDenseFromHdfsTask::new(&context);
+            let restore_task = {
+                #[cfg(feature = "hdfs")]
+                {
+                    RestoreDenseFromHdfsTask::new(&context)
+                }
+                #[cfg(feature = "local")]
+                {
+                    RestoreDenseFromLocalTask::new(&context)
+                }
+            };
 
             let mut var = vars.get_element_mut_unchecked(index);
 

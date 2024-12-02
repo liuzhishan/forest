@@ -16,7 +16,10 @@ mod sample;
 
 mod batch_assembler;
 mod feed_sample;
+
+#[cfg(feature = "hdfs")]
 mod hdfs_reader;
+
 mod start_sample;
 
 mod pipeline;

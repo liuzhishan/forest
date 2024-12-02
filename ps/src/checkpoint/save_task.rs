@@ -13,7 +13,10 @@ use base64::Engine;
 use crate::dense::DenseVariable;
 use crate::embedding::Embedding;
 
-use super::file_handler::{FileWriter, HdfsFileWriter, LocalFileWriter};
+#[cfg(feature = "hdfs")]
+use super::file_handler::HdfsFileWriter;
+
+use super::file_handler::{FileWriter, LocalFileWriter};
 use super::tool::CheckpointContext;
 
 /// Encode message to base64, then save to one line in file.
@@ -250,5 +253,7 @@ impl<W: FileWriter> SaveDenseTask<W> {
 pub type SaveSparseToLocalTask = SaveSparseTask<LocalFileWriter>;
 pub type SaveDenseToLocalTask = SaveDenseTask<LocalFileWriter>;
 
+#[cfg(feature = "hdfs")]
 pub type SaveSparseToHdfsTask = SaveSparseTask<HdfsFileWriter>;
+#[cfg(feature = "hdfs")]
 pub type SaveDenseToHdfsTask = SaveDenseTask<HdfsFileWriter>;

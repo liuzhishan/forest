@@ -3,9 +3,9 @@ use log::{error, info};
 use util::histogram::record_time;
 
 use std::io::{BufRead, BufReader};
-
 use coarsetime::Instant;
 use hdrs::ClientBuilder;
+
 use tokio_graceful_shutdown::SubsystemHandle;
 
 use util::histogram::{Histogram, HistogramType};
@@ -47,6 +47,7 @@ impl HdfsReader {
     }
 
     /// Read from hdfs paths, send line to channel.
+    #[cfg(feature = "hdfs")]
     pub async fn run(mut self, _subsys: SubsystemHandle) -> Result<()> {
         let fs = ClientBuilder::new(&"default").connect()?;
 
